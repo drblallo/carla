@@ -18,7 +18,7 @@ def is_rss_variant_enabled():
     return False
 
 def get_libcarla_extensions():
-    include_dirs = ['dependencies/include']
+    include_dirs = ['dependencies/include', './source/rlc_wrapper_generator/build/']
 
     library_dirs = ['dependencies/lib']
     libraries = []
@@ -34,7 +34,7 @@ def get_libcarla_extensions():
     if os.name == "posix":
         import distro
         supported_dists = ["ubuntu", "debian", "deepin"]
-        
+
         linux_distro = distro.id().lower()
         if linux_distro in supported_dists:
             pwd = os.path.dirname(os.path.realpath(__file__))

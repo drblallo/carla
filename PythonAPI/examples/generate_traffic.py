@@ -343,9 +343,25 @@ def main():
 
         # Example of how to use Traffic Manager parameters
         traffic_manager.global_percentage_speed_difference(30.0)
+        # graph = {}
+        # for source, target in world.get_map().get_topology():
+            # source_loc = source.transform.location
+            # target_loc = target.transform.location
+            # graph[source.id] = source_loc
+            # graph[target.id] = target_loc
+            # print(f"{source.id}, {target.id}")
+        # for id, loc in graph.items():
+            # print(f"{id}, {loc.x}, {loc.y}, {loc.z}")
 
         while True:
             if not args.asynch and synchronous_master:
+                # elapsed_time = world.get_snapshot().timestamp.elapsed_seconds
+                # all_vehicle_actors = [a for a in world.get_actors(vehicles_list)]
+                # all_walkers_actor = [a for a in world.get_actors([w["id"] for w in walkers_list])]
+                # for actor in all_vehicle_actors + all_walkers_actor:
+                    # vel = actor.get_velocity()
+                    # pos = actor.get_location()
+                    # print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {pos.x}, {pos.y}, {pos.z}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
                 world.tick()
             else:
                 world.wait_for_tick()

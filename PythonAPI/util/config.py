@@ -250,7 +250,7 @@ def main():
             print('load opendrive map.')
             vertex_distance = 2.0  # in meters
             max_road_length = 500.0 # in meters
-            wall_height = 0.0      # in meters
+            wall_height = 0.6      # in meters
             extra_width = 0.6      # in meters
             world = client.generate_opendrive_world(
                 xodr_data, carla.OpendriveGenerationParameters(

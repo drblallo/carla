@@ -27,6 +27,7 @@ clean.LibCarla:
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildLibCarla.sh --clean
 clean.PythonAPI:
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildPythonAPI.sh --clean
+	rm -rf ./PythonAPI/carla/source/rlc_wrapper_generator/build
 clean.CarlaUE4Editor:
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildUE4Plugins.sh --clean $(ARGS)
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildCarlaUE4.sh --clean
@@ -34,7 +35,7 @@ clean.osm2odr:
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildOSM2ODR.sh --clean
 clean: clean.CarlaUE4Editor clean.PythonAPI clean.LibCarla clean.osm2odr
 
-rebuild: setup
+rebuild: setup rlcemitrlcwrapperinc
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildLibCarla.sh --rebuild
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildOSM2ODR.sh --rebuild
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildPythonAPI.sh --rebuild $(ARGS)
@@ -161,3 +162,9 @@ osmrenderer:
 
 downloadplugins:
 	@${CARLA_BUILD_TOOLS_FOLDER}/BuildUE4Plugins.sh --build $(ARGS)
+
+rlcwrappergenerator:
+	mkdir ./PythonAPI/carla/source/rlc_wrapper_generator/build ; cd ./PythonAPI/carla/source/rlc_wrapper_generator/build && cmake ../ && make all
+
+rlcemitrlcwrapperinc: ./PythonAPI/carla/source/rlc_wrapper_generator/build/generator rlcwrappergenerator ./PythonAPI/carla/source/libcarla/libcarla.cpp
+	./PythonAPI/carla/source/rlc_wrapper_generator/build/generator ./PythonAPI/carla/source/libcarla/libcarla.cpp -- -I ~/rlc-infrastructure/llvm-install-release/lib/clang/18/include/ -I ./PythonAPI/carla/dependencies/include/ -I ./PythonAPI/carla/dependencies/include/system/ -DLIBCARLA_WITH_PYTHON_SUPPORT -I ${UE4_ROOT}/Engine/Source/ThirdParty/Python/Linux/include/x86_64-unknown-linux-gnu/ -I ${UE4_ROOT}/Engine/Source/ThirdParty/Python3/Linux/include/python3.7m/ -Wno-everything -DRLC_GEN_WRAPPER > ./PythonAPI/carla/source/rlc_wrapper_generator/build/rlc_wrapper.inc
