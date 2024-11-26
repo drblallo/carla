@@ -9,6 +9,7 @@
 """Example script to generate traffic in the simulation"""
 
 import glob
+import numpy
 import os
 import sys
 import time
@@ -116,6 +117,11 @@ def main():
         metavar='G',
         default='2',
         help='restrict to certain pedestrian generation (values: "1","2","All" - default: "2")')
+    argparser.add_argument(
+        '--speed-variance',
+        default=1.0,
+        type=float,
+        help='variance of the speed of each vehicle with respect to speed limit')
     argparser.add_argument(
         '--tm-port',
         metavar='P',
@@ -257,6 +263,7 @@ def main():
             batch.append(SpawnActor(blueprint, transform)
                 .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
 
+
         for response in client.apply_batch_sync(batch, synchronous_master):
             if response.error:
                 logging.error(response.error)
@@ -268,6 +275,11 @@ def main():
             all_vehicle_actors = world.get_actors(vehicles_list)
             for actor in all_vehicle_actors:
                 traffic_manager.update_vehicle_lights(actor, True)
+
+        all_vehicle_actors = world.get_actors(vehicles_list)
+        for actor in all_vehicle_actors:
+            traffic_manager.vehicle_percentage_speed_difference(actor, numpy.random.normal(loc=0, scale=args.speed_variance, size=None))
+
 
         # -------------
         # Spawn Walkers

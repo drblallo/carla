@@ -9,6 +9,7 @@
 """Example script to generate traffic in the simulation"""
 
 import glob
+import numpy
 import os
 import sys
 import time
@@ -28,6 +29,19 @@ from carla import VehicleLightState as vls
 import argparse
 import logging
 from numpy import random
+
+
+def get_geolocation(world, x, y, z=0.0):
+    # Assuming the CARLA server is already running and world is connected
+    geo_transform = world.get_map().transform_to_geolocation
+
+    # Create a carla.Location with the given x, y, z (CARLA world coordinates)
+    location = carla.Location(x=x, y=y, z=z)
+
+    # Transform the location to GeoLocation (latitude, longitude, altitude)
+    geolocation = geo_transform(location)
+
+    return geolocation
 
 def get_actor_blueprints(world, filter, generation):
     bps = world.get_blueprint_library().filter(filter)
@@ -103,6 +117,11 @@ def main():
         metavar='G',
         default='2',
         help='restrict to certain pedestrian generation (values: "1","2","All" - default: "2")')
+    argparser.add_argument(
+        '--speed-variance',
+        default=1.0,
+        type=float,
+        help='variance of the speed of each vehicle with respect to speed limit')
     argparser.add_argument(
         '--tm-port',
         metavar='P',
@@ -244,6 +263,7 @@ def main():
             batch.append(SpawnActor(blueprint, transform)
                 .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
 
+
         for response in client.apply_batch_sync(batch, synchronous_master):
             if response.error:
                 logging.error(response.error)
@@ -255,6 +275,11 @@ def main():
             all_vehicle_actors = world.get_actors(vehicles_list)
             for actor in all_vehicle_actors:
                 traffic_manager.update_vehicle_lights(actor, True)
+
+        all_vehicle_actors = world.get_actors(vehicles_list)
+        for actor in all_vehicle_actors:
+            traffic_manager.vehicle_percentage_speed_difference(actor, numpy.random.normal(loc=0, scale=args.speed_variance, size=None))
+
 
         # -------------
         # Spawn Walkers
@@ -353,15 +378,17 @@ def main():
         # for id, loc in graph.items():
             # print(f"{id}, {loc.x}, {loc.y}, {loc.z}")
 
+        print(get_geolocation(world, 0, 0, 0))
         while True:
             if not args.asynch and synchronous_master:
-                # elapsed_time = world.get_snapshot().timestamp.elapsed_seconds
-                # all_vehicle_actors = [a for a in world.get_actors(vehicles_list)]
-                # all_walkers_actor = [a for a in world.get_actors([w["id"] for w in walkers_list])]
-                # for actor in all_vehicle_actors + all_walkers_actor:
-                    # vel = actor.get_velocity()
-                    # pos = actor.get_location()
-                    # print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {pos.x}, {pos.y}, {pos.z}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
+                elapsed_time = world.get_snapshot().timestamp.elapsed_seconds
+                all_vehicle_actors = [a for a in world.get_actors(vehicles_list)]
+                all_walkers_actor = [a for a in world.get_actors([w["id"] for w in walkers_list])]
+                for actor in all_vehicle_actors + all_walkers_actor:
+                    vel = actor.get_velocity()
+                    pos = actor.get_location()
+                    geo_loc = get_geolocation(world, pos.x, pos.y, pos.z)
+                    print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {geo_loc.latitude}, {geo_loc.longitude}, {geo_loc.altitude}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
                 world.tick()
             else:
                 world.wait_for_tick()

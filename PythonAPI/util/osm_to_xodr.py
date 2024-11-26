@@ -1,6 +1,7 @@
 """ Convert OpenStreetMap file to OpenDRIVE file. """
 
 import argparse
+import re
 import glob
 import os
 import sys
@@ -15,6 +16,19 @@ except IndexError:
 
 import carla
 
+def extract_lati_longi(string):
+    pattern = r'bounds minlat="([\d.-]+)" minlon="([\d.-]+)"'
+
+    # Search for the first match
+    match = re.search(pattern, string)
+
+    if match:
+        minlat = float(match.group(1))  # Extract and convert the first number
+        minlon = float(match.group(2))  # Extract and convert the second number
+        # print(f"minlat: {minlat}, minlon: {minlon}")
+    else:
+        print("could not find map georeference")
+    return minlat, minlon
 
 def convert(args):
     # Read the .osm data
@@ -45,7 +59,9 @@ def convert(args):
     settings.center_map = args.center_map
 
     # Convert to .xodr
+    lat, long = extract_lati_longi(osm_data)
     xodr_data = carla.Osm2Odr.convert(osm_data, settings)
+    xodr_data = xodr_data.replace("+proj=tmerc", f"+proj=tmerc +datum=WGS84 +no_defs +lon_0={long} +lat_0={lat} ")
 
     # save opendrive file
     with open(args.output_path, "w", encoding="utf-8") as xodrFile:
@@ -101,7 +117,8 @@ def main():
 
     try:
         convert(args)
-    except:
+    except Exception as e:
+        print(e)
         print('\nAn error has occurred in conversion.')
 
 

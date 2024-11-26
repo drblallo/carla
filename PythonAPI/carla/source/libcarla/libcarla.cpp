@@ -274,5 +274,5 @@ namespace cr = carla::rpc;
 namespace csd = carla::sensor::data;
 
 #ifndef RLC_GEN_WRAPPER
-#include "rlc_wrapper.inc"
+//#include "rlc_wrapper.inc"
 #endif

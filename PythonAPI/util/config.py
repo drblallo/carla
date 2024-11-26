@@ -112,6 +112,20 @@ def inspect(args, client):
     print('  * walkers:  % 20d' % len(actors.filter('walker.*')))
     print('-' * 34)
 
+def extract_lati_longi(string):
+    pattern = r'bounds minlat="([\d.-]+)" minlon="([\d.-]+)"'
+
+    # Search for the first match
+    match = re.search(pattern, string)
+
+    if match:
+        minlat = float(match.group(1))  # Extract and convert the first number
+        minlon = float(match.group(2))  # Extract and convert the second number
+        # print(f"minlat: {minlat}, minlon: {minlon}")
+    else:
+        print("could not find map georeference")
+    return minlat, minlon
+
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -208,6 +222,7 @@ def main():
         args.weather = 'Default'
         args.no_sync = True
 
+    world = None
     if args.map is not None:
         print('load map %r.' % args.map)
         world = client.load_world(args.map)
@@ -225,8 +240,8 @@ def main():
             print('load opendrive map %r.' % os.path.basename(args.xodr_path))
             vertex_distance = 2.0  # in meters
             max_road_length = 500.0 # in meters
-            wall_height = 1.0      # in meters
-            extra_width = 0.6      # in meters
+            wall_height = 0.0      # in meters
+            extra_width = 2.6      # in meters
             world = client.generate_opendrive_world(
                 data, carla.OpendriveGenerationParameters(
                     vertex_distance=vertex_distance,
@@ -245,13 +260,16 @@ def main():
                 except OSError:
                     print('file could not be readed.')
                     sys.exit()
+            lat, long = extract_lati_longi(data)
+            print(lat, long)
             print('Converting OSM data to opendrive')
             xodr_data = carla.Osm2Odr.convert(data)
+            xodr_data = xodr_data.replace("+proj=tmerc", f"+proj=tmerc +datum=WGS84 +no_defs +lon_0={long} +lat_0={lat} ")
             print('load opendrive map.')
             vertex_distance = 2.0  # in meters
             max_road_length = 500.0 # in meters
-            wall_height = 0.6      # in meters
-            extra_width = 0.6      # in meters
+            wall_height = 0.0      # in meters
+            extra_width = 2      # in meters
             world = client.generate_opendrive_world(
                 xodr_data, carla.OpendriveGenerationParameters(
                     vertex_distance=vertex_distance,

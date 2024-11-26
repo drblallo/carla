@@ -133,7 +133,6 @@ namespace road {
     DEBUG_ASSERT(road != nullptr);
 
     // must s be smaller (or eq) than road length and bigger (or eq) than 0?
-    RELEASE_ASSERT(s <= road->GetLength());
     RELEASE_ASSERT(s >= 0.0);
 
     const auto *lane_section = GetLaneSection();
