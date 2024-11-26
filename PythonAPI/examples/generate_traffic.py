@@ -368,15 +368,6 @@ def main():
 
         # Example of how to use Traffic Manager parameters
         traffic_manager.global_percentage_speed_difference(30.0)
-        # graph = {}
-        # for source, target in world.get_map().get_topology():
-            # source_loc = source.transform.location
-            # target_loc = target.transform.location
-            # graph[source.id] = source_loc
-            # graph[target.id] = target_loc
-            # print(f"{source.id}, {target.id}")
-        # for id, loc in graph.items():
-            # print(f"{id}, {loc.x}, {loc.y}, {loc.z}")
 
         print(get_geolocation(world, 0, 0, 0))
         while True:

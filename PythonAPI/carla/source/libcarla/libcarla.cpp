@@ -264,15 +264,3 @@ BOOST_PYTHON_MODULE(libcarla) {
   #endif
   export_osm2odr();
 }
-
-using namespace boost::python;
-using namespace boost::python::objects;
-namespace cs = carla::sensor; 
-namespace cc = carla::client;
-namespace cg = carla::geom;
-namespace cr = carla::rpc;
-namespace csd = carla::sensor::data;
-
-#ifndef RLC_GEN_WRAPPER
-//#include "rlc_wrapper.inc"
-#endif

@@ -177,17 +177,17 @@ static auto ApplyBatchCommandsSync(
 void export_client() {
   using namespace boost::python;
   namespace cc = carla::client;
-  namespace cr = carla::rpc;
+  namespace rpc = carla::rpc;
 
-  class_<cr::OpendriveGenerationParameters>("OpendriveGenerationParameters",
+  class_<rpc::OpendriveGenerationParameters>("OpendriveGenerationParameters",
       init<double, double, double, double, bool, bool, bool>((arg("vertex_distance")=2.0, arg("max_road_length")=50.0, arg("wall_height")=1.0, arg("additional_width")=0.6, arg("smooth_junctions")=true, arg("enable_mesh_visibility")=true, arg("enable_pedestrian_navigation")=true)))
-    .def_readwrite("vertex_distance", &cr::OpendriveGenerationParameters::vertex_distance)
-    .def_readwrite("max_road_length", &cr::OpendriveGenerationParameters::max_road_length)
-    .def_readwrite("wall_height", &cr::OpendriveGenerationParameters::wall_height)
-    .def_readwrite("additional_width", &cr::OpendriveGenerationParameters::additional_width)
-    .def_readwrite("smooth_junctions", &cr::OpendriveGenerationParameters::smooth_junctions)
-    .def_readwrite("enable_mesh_visibility", &cr::OpendriveGenerationParameters::enable_mesh_visibility)
-    .def_readwrite("enable_pedestrian_navigation", &cr::OpendriveGenerationParameters::enable_pedestrian_navigation)
+    .def_readwrite("vertex_distance", &rpc::OpendriveGenerationParameters::vertex_distance)
+    .def_readwrite("max_road_length", &rpc::OpendriveGenerationParameters::max_road_length)
+    .def_readwrite("wall_height", &rpc::OpendriveGenerationParameters::wall_height)
+    .def_readwrite("additional_width", &rpc::OpendriveGenerationParameters::additional_width)
+    .def_readwrite("smooth_junctions", &rpc::OpendriveGenerationParameters::smooth_junctions)
+    .def_readwrite("enable_mesh_visibility", &rpc::OpendriveGenerationParameters::enable_mesh_visibility)
+    .def_readwrite("enable_pedestrian_navigation", &rpc::OpendriveGenerationParameters::enable_pedestrian_navigation)
   ;
 
   class_<cc::Client>("Client",
@@ -201,10 +201,10 @@ void export_client() {
     .def("get_required_files", &GetRequiredFiles, (arg("folder")="", arg("download")=true))
     .def("request_file", &cc::Client::RequestFile, (arg("name")))
     .def("reload_world", CONST_CALL_WITHOUT_GIL_1(cc::Client, ReloadWorld, bool), (arg("reset_settings")=true))
-    .def("load_world", CONST_CALL_WITHOUT_GIL_3(cc::Client, LoadWorld, std::string, bool, cr::MapLayer), (arg("map_name"), arg("reset_settings")=true, arg("map_layers")=cr::MapLayer::All))
-    .def("load_world_if_different", &cc::Client::LoadWorldIfDifferent, (arg("map_name"), arg("reset_settings")=true, arg("map_layers")=cr::MapLayer::All))
+    .def("load_world", CONST_CALL_WITHOUT_GIL_3(cc::Client, LoadWorld, std::string, bool, rpc::MapLayer), (arg("map_name"), arg("reset_settings")=true, arg("map_layers")=rpc::MapLayer::All))
+    .def("load_world_if_different", &cc::Client::LoadWorldIfDifferent, (arg("map_name"), arg("reset_settings")=true, arg("map_layers")=rpc::MapLayer::All))
     .def("generate_opendrive_world", CONST_CALL_WITHOUT_GIL_3(cc::Client, GenerateOpenDriveWorld, std::string,
-        cr::OpendriveGenerationParameters, bool), (arg("opendrive"), arg("parameters")=cr::OpendriveGenerationParameters(),
+        rpc::OpendriveGenerationParameters, bool), (arg("opendrive"), arg("parameters")=rpc::OpendriveGenerationParameters(),
         arg("reset_settings")=true))
     .def("start_recorder", CALL_WITHOUT_GIL_2(cc::Client, StartRecorder, std::string, bool), (arg("name"), arg("additional_data")=false))
     .def("stop_recorder", &cc::Client::StopRecorder)
