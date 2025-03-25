@@ -90,7 +90,9 @@ void AOpenDriveGenerator::GenerateRoadMesh()
     TempPMC->bUseComplexAsSimpleCollision = true;
     TempPMC->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 
-    const FProceduralCustomMesh MeshData = *Mesh;
+    FProceduralCustomMesh MeshData = *Mesh;
+    for (auto& vertex : MeshData.Vertices)
+        vertex.Z = 0.0;
     TempPMC->CreateMeshSection_LinearColor(
         0,
         MeshData.Vertices,

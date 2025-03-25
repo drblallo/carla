@@ -126,7 +126,6 @@ namespace detail {
     // It will load the last sended OpenDRIVE by client's "LoadOpenDriveEpisode()"
     constexpr auto custom_opendrive_map = "OpenDriveMap";
     _client.CopyOpenDriveToServer(std::move(opendrive), params);
-    sleep(10);
     return LoadEpisode(custom_opendrive_map, reset_settings);
   }
 

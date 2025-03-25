@@ -214,7 +214,7 @@ def main():
     args = argparser.parse_args()
 
     client = carla.Client(args.host, args.port, worker_threads=1)
-    client.set_timeout(10.0)
+    client.set_timeout(1000000.0)
 
     if args.default:
         args.rendering = True
@@ -269,7 +269,7 @@ def main():
             vertex_distance = 2.0  # in meters
             max_road_length = 500.0 # in meters
             wall_height = 0.0      # in meters
-            extra_width = 2      # in meters
+            extra_width = 10      # in meters
             world = client.generate_opendrive_world(
                 xodr_data, carla.OpendriveGenerationParameters(
                     vertex_distance=vertex_distance,

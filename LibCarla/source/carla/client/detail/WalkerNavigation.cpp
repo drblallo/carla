@@ -25,6 +25,9 @@ namespace detail {
     _nav.SetSimulator(simulator);
     // Here call the server to retrieve the navmesh data.
     auto files = _simulator.lock()->GetRequiredFiles("Nav");
+    for (auto& file : files) {
+        printf("file: %s\n", file.c_str());
+    }
     if (!files.empty()) {
       _nav.Load(_simulator.lock()->GetCacheFile(files[0], true));
     }

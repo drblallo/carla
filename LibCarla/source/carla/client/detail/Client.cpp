@@ -232,7 +232,7 @@ namespace detail {
     std::vector<uint8_t> file = FileTransfer::ReadFile(name);
 
     // If it isn't in the cache, download it if request otherwise is true
-    if (file.empty() && request_otherwise) {
+    if ((file.empty() && request_otherwise) or true) {
       RequestFile(name);
       file = FileTransfer::ReadFile(name);
     }

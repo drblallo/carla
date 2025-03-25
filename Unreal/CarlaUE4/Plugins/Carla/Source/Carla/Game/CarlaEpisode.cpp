@@ -30,6 +30,7 @@
 #include "Materials/MaterialParameterCollectionInstance.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include <sys/wait.h>
 
 static FString UCarlaEpisode_GetTrafficSignId(ETrafficSignState State)
 {
@@ -193,6 +194,7 @@ bool UCarlaEpisode::LoadNewOpendriveEpisode(
   if (!FPaths::FileExists(AbsoluteXODRPath))
   {
     UE_LOG(LogCarla, Error, TEXT("ERROR: XODR not copied!"));
+    abort();
     return false;
   }
 
@@ -204,6 +206,7 @@ bool UCarlaEpisode::LoadNewOpendriveEpisode(
   else
   {
     carla::log_warning("Missing game instance");
+    abort();
   }
 
   const FString AbsoluteRecastBuilderPath = BuildRecastBuilderFile();
@@ -213,15 +216,22 @@ bool UCarlaEpisode::LoadNewOpendriveEpisode(
   {
     /// @todo this can take too long to finish, clients need a method
     /// to know if the navigation is available or not.
-    FPlatformProcess::CreateProc(
+    FProcHandle ProcHandle = FPlatformProcess::CreateProc(
         *AbsoluteRecastBuilderPath, *AbsoluteOBJPath,
         true, true, true, nullptr, 0, nullptr, nullptr);
+    // Wait for the process to finish (optional)
+    UE_LOG(LogCarla, Warning, TEXT("'RecastBuilder' pid '%i', "),
+        ProcHandle.GetProcessInfo()->GetProcessId());
+    waitpid(ProcHandle.GetProcessInfo()->GetProcessId(), nullptr, 0);
+    UE_LOG(LogCarla, Warning, TEXT("'Waited' pid '%i', "),
+        ProcHandle.GetProcessInfo()->GetProcessId());
   }
   else
   {
     UE_LOG(LogCarla, Warning, TEXT("'RecastBuilder' not present under '%s', "
         "the binaries for pedestrian navigation will not be created."),
         *AbsoluteRecastBuilderPath);
+    abort();
   }
 
   return true;

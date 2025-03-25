@@ -13,6 +13,37 @@ import numpy
 import os
 import sys
 import time
+import wrapper as rlc_scripts
+# from carla_to_step import create_logger, create_sync_com_manager, vehicle_to_message
+
+class WalkerWrapper:
+    def __init__(self, world, walker, walker_ai):
+        self.world = world
+        self.walker = walker
+        self.walker_ai = walker_ai
+        self.target_point = None
+        self.rlc_walker = rlc_scripts.functions.make_walker(self)
+        self.rlc_script = rlc_scripts.functions.walker_behaviour(self.rlc_walker)
+
+    def set_relative_target_location(self, x, y):
+        self.walker_ai.stop()
+        self.walker_ai.start()
+        self.target_waypoint = self.world.get_map().get_waypoint(
+            carla.Location(self.walker.get_location().x  + x, self.walker.get_location().y + y),
+            project_to_road=True,
+            lane_type=carla.LaneType.Sidewalk  # or LaneType.Any
+        ).transform.location
+        self.walker_ai.go_to_location(self.target_waypoint)
+
+    def walker_reached_destination(self, threshold=2):
+        current_location = self.walker.get_location()
+        distance = current_location.distance(self.target_waypoint)
+        return distance < threshold
+
+    def tick(self):
+        if self.walker_reached_destination():
+            rlc_scripts.functions.reached_location(self.rlc_script)
+
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -178,7 +209,8 @@ def main():
     client = carla.Client(args.host, args.port)
     client.set_timeout(10.0)
     synchronous_master = False
-    random.seed(args.seed if args.seed is not None else int(time.time()))
+    seed = args.seed if args.seed is not None else int(time.time())
+    random.seed(seed)
 
     try:
         world = client.get_world()
@@ -285,8 +317,8 @@ def main():
         # Spawn Walkers
         # -------------
         # some settings
-        percentagePedestriansRunning = 0.0      # how many pedestrians will run
-        percentagePedestriansCrossing = 0.0     # how many pedestrians will walk through the road
+        percentagePedestriansRunning = 0.2      # how many pedestrians will run
+        percentagePedestriansCrossing = 1.0     # how many pedestrians will walk through the road
         if args.seedw:
             world.set_pedestrians_seed(args.seedw)
             random.seed(args.seedw)
@@ -370,22 +402,57 @@ def main():
         traffic_manager.global_percentage_speed_difference(30.0)
 
         print(get_geolocation(world, 0, 0, 0))
+        # logger = create_logger()
+        # client = create_sync_com_manager(logger)
+
+        all_walkers_actor = [a for a in world.get_actors([w["con"] for w in walkers_list])]
+        all_walkers_actor_controller = [a for a in world.get_actors([w["id"] for w in walkers_list])]
+
+        main_walker = None
+        if len(all_walkers_actor) != 0:
+            main_walker_ai = all_walkers_actor[0]
+            # main_walker_ai.stop()
+            # main_walker_ai.start()
+            main_walker = all_walkers_actor_controller[0]
+            # main_walker.apply_control(carla.WalkerControl(direction=carla.Vector3D(-100000.0, 10.0, 0), speed=1000.0))
+            # main_walker.get_control().speed = 10.
+            # target_location = carla.Location(x=-200000.0, y=200000.0, z=0.0)
+            # print("called")
+            # main_walker.go_to_location(target_location)
+            # main_walker_ai.go_to_location(world.get_random_location_from_navigation())
+            # waypoint = world.get_map().get_waypoint(
+                # carla.Location(main_walker.get_location().x  +4, main_walker.get_location().y + 10),
+                # project_to_road=True,
+                # lane_type=carla.LaneType.Sidewalk  # or LaneType.Any
+            # )
+            # print(world.get_random_location_from_navigation())
+            # print(main_walker.get_location())
+            # print(waypoint.transform.location)
+            # main_walker_ai.go_to_location(waypoint.transform.location)
+
+            main_walker = WalkerWrapper(world, main_walker, main_walker_ai)
+            # main_walker.set_relative_target_location(4, 10)
+
         while True:
             if not args.asynch and synchronous_master:
-                elapsed_time = world.get_snapshot().timestamp.elapsed_seconds
+                # if elapsed_time != world.get_snapshot().timestamp.elapsed_seconds:
+                    # print("tick second")
+                # elapsed_time = world.get_snapshot().timestamp.elapsed_seconds
                 all_vehicle_actors = [a for a in world.get_actors(vehicles_list)]
                 all_walkers_actor = [a for a in world.get_actors([w["id"] for w in walkers_list])]
                 for actor in all_vehicle_actors + all_walkers_actor:
                     vel = actor.get_velocity()
                     pos = actor.get_location()
                     geo_loc = get_geolocation(world, pos.x, pos.y, pos.z)
-                    print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {geo_loc.latitude}, {geo_loc.longitude}, {geo_loc.altitude}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
+                    # print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {geo_loc.latitude}, {geo_loc.longitude}, {geo_loc.altitude}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
                 world.tick()
             else:
                 world.wait_for_tick()
+                main_walker.tick()
 
     finally:
 
+        # client.stop()
         if not args.asynch and synchronous_master:
             settings = world.get_settings()
             settings.synchronous_mode = False

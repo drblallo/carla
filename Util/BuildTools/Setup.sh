@@ -67,7 +67,7 @@ UNREAL_HOSTED_CFLAGS="--sysroot=$UE4_ROOT/Engine/Extras/ThirdPartyNotUE/SDKs/Hos
 # -- Get boost includes --------------------------------------------------------
 # ==============================================================================
 
-BOOST_VERSION=1.80.0
+BOOST_VERSION=1.81.0
 BOOST_BASENAME="boost-${BOOST_VERSION}-${CXX_TAG}"
 BOOST_SHA256SUM="4b2136f98bdd1f5857f1c3dea9ac2018effe65286cf251534b6ae20cc45e1847"
 
@@ -99,15 +99,6 @@ for PY_VERSION in ${PY_VERSION_LIST[@]} ; do
     echo "Elapsed Time downloading from boost webpage: $(($end-$start)) seconds"
 
     # try to use the backup boost we have in Jenkins
-    if [ ! -f "${BOOST_PACKAGE_BASENAME}.tar.gz" ] || [[ $(sha256sum "${BOOST_PACKAGE_BASENAME}.tar.gz" | cut -d " " -f 1 ) != "${BOOST_SHA256SUM}" ]] ; then
-      log "Using boost backup"
-
-      start=$(date +%s)
-      wget "https://carla-releases.s3.us-east-005.backblazeb2.com/Backup/${BOOST_PACKAGE_BASENAME}.tar.gz" -O ${BOOST_PACKAGE_BASENAME}.tar.gz || true
-      end=$(date +%s)
-      echo "Elapsed Time downloading from boost carla backup in backblaze: $(($end-$start)) seconds"
-
-    fi
 
     log "Extracting boost for Python ${PY_VERSION}."
 

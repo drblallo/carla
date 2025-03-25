@@ -394,6 +394,7 @@ class KeyboardControl(object):
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
     def parse_events(self, client, world, clock, sync_mode):
+        world.camera_manager.rotate_camera(*pygame.mouse.get_rel())
         if isinstance(self._control, carla.VehicleControl):
             current_lights = self._lights
         for event in pygame.event.get():
@@ -1083,6 +1084,7 @@ class RadarSensor(object):
 
 class CameraManager(object):
     def __init__(self, parent_actor, hud, gamma_correction):
+        self.images_panel = None
         self.sensor = None
         self.surface = None
         self._parent = parent_actor
@@ -1095,6 +1097,7 @@ class CameraManager(object):
 
         if not self._parent.type_id.startswith("walker.pedestrian"):
             self._camera_transforms = [
+                (carla.Transform(carla.Location(x=0, y=-0.37, z=1.2), carla.Rotation(pitch=-15.0)), Attachment.Rigid),
                 (carla.Transform(carla.Location(x=-2.0*bound_x, y=+0.0*bound_y, z=2.0*bound_z), carla.Rotation(pitch=8.0)), Attachment.SpringArmGhost),
                 (carla.Transform(carla.Location(x=+0.8*bound_x, y=+0.0*bound_y, z=1.3*bound_z)), Attachment.Rigid),
                 (carla.Transform(carla.Location(x=+1.9*bound_x, y=+1.0*bound_y, z=1.2*bound_z)), Attachment.SpringArmGhost),
@@ -1150,6 +1153,46 @@ class CameraManager(object):
             item.append(bp)
         self.index = None
 
+    def get_local_transform(self, child_actor):
+        # Get world transforms
+        parent_world_tf = self._parent.get_transform()
+        child_world_tf = child_actor.get_transform()
+
+        # Invert the parent's world transform
+        parent_inv_tf = parent_world_tf.inverse()
+
+        # Multiply: local_tf = parent_inv_tf * child_world_tf
+        local_tf = parent_inv_tf * child_world_tf
+        return local_tf
+
+    def rotate_camera(self, xdiff, ydiff):
+        prev_transform = self.sensor.get_transform()
+
+        parent_trasform = self._parent.get_transform()
+        # print(prev_transform.location)
+        # print(parent_trasform.location)
+        current_transform = carla.Transform(
+            # carla.Location(x=prev_transform.location.x - parent_trasform.location.x, y=prev_transform.location.y- parent_trasform.location.y, z=prev_transform.location.z- parent_trasform.location.z),
+            self._camera_transforms[self.transform_index][0].location,
+            # carla.Location(x=0, y=0, z=0),
+            carla.Rotation(pitch=(prev_transform.rotation.pitch-ydiff) - parent_trasform.rotation.pitch, yaw=prev_transform.rotation.yaw+xdiff- parent_trasform.rotation.yaw, roll=prev_transform.rotation.roll - parent_trasform.rotation.roll)
+            # carla.Rotation(pitch=0, yaw=0, roll=0)
+        )
+        # print(prev_transform)
+        # prev_transform.rotation.pitch = prev_transform.rotation.pitch + xdiff
+        # prev_transform.rotation.yaw = prev_transform.rotation.yaw + ydiff
+        # print(xdiff, ydiff)
+
+        # parent = self.sensor.parent
+        # self.sensor.parent = None
+        # print("after", current_transform)
+        self.sensor.set_transform(current_transform)
+        # print(self.sensor.get_transform())
+        # self.sensor.parent = parent
+        # self.sensor.set_transform(self.current_transform)
+        # self.index = self.index + 1
+
+
     def toggle_camera(self):
         self.transform_index = (self.transform_index + 1) % len(self._camera_transforms)
         self.set_sensor(self.index, notify=False, force_respawn=True)
@@ -1167,6 +1210,16 @@ class CameraManager(object):
                 self._camera_transforms[self.transform_index][0],
                 attach_to=self._parent,
                 attachment_type=self._camera_transforms[self.transform_index][1])
+            if self.images_panel is not None:
+                self.images_panel.destroy()
+
+            # Attachment = carla.AttachmentType
+            # world = self._parent.get_world()
+            # self.images_panel = self._parent.get_world().spawn_actor(
+                # world.get_blueprint_library().find('Props.vodafone_display'),
+                # carla.Transform(carla.Location(x=-2.0, y=+0.0, z=2.0), carla.Rotation(pitch=8.0)),
+                # attach_to=self._parent,
+                # attachment_type=Attachment.Rigid)
             # We need to pass the lambda a weak reference to self to avoid
             # circular reference.
             weak_self = weakref.ref(self)
@@ -1333,7 +1386,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
+        default='1920x1024',
         help='window resolution (default: 1280x720)')
     argparser.add_argument(
         '--filter',

@@ -98,6 +98,7 @@ namespace nav {
 
   // load navigation data from memory
   bool Navigation::Load(std::vector<uint8_t> content) {
+
     const int NAVMESHSET_MAGIC = 'M' << 24 | 'S' << 16 | 'E' << 8 | 'T'; // 'MSET';
     const int NAVMESHSET_VERSION = 1;
 #pragma pack(push, 1)
