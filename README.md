@@ -1,3 +1,104 @@
+CARLA X Vodafone
+================
+
+### Building from source
+clone unreal from
+```
+git clone git@github.com:CarlaUnreal/UnrealEngine.git
+```
+
+to access this you may require to register you github account as a unreal developer account.
+
+enter the cloned directory
+
+```
+cd UnrealEngine
+```
+
+checkout the known good commit
+
+```
+git checkout e8c73304f9f3f91ba12c997516deeb2434e4489e
+```
+
+build unreal engine
+
+```
+./Setup.sh
+./GenerateProjectFiles.sh
+make
+```
+
+Contact us to obtained the Content file
+```
+mv Content  Unreal/CarlaUE4
+```
+
+clone carla
+
+```
+cd
+git clone git@github.com:drblallo/Carla.git
+git checkout dev
+```
+
+```
+python3.11 -m pip install virtualenv
+python3.11 -m virtualenv .venv
+source .venv/bin/activate
+pip install rl_language
+```
+
+install carla dependencies as shown on carla websiteA https://carla.readthedocs.io/en/latest/build_linux/
+
+
+
+#### RUN
+
+install numpy and py game
+```
+pip install numpy pygame
+```
+
+From a new shell
+if you have not done so, remember to export the UNREAL path every time
+```
+export UE4_ROOT=~/UnrealEngine_4.26/
+```
+move to the carla directory and source the enviroment
+
+```
+cd carla/path
+source .venv/bin/activate
+```
+
+run the editor with
+
+```
+make launch
+```
+
+from unreal start the execution of the program.
+
+from another shell enter again the carla directory, set the UNREAL path env and source the virual env.
+
+build the PythonAPI
+
+```
+make PythonAPI
+```
+
+#### Examples
+move to the example directory
+
+```
+cd PythonAPI/Examples
+python ./generate_traffic.py
+```
+
+
+
+
 CARLA Simulator
 ===============
 
