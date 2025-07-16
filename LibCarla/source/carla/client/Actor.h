@@ -36,6 +36,12 @@ namespace client {
     /// received in the last tick.
     geom::Location GetLocation() const;
 
+    /// Return the current location of the actor expressed as geo location
+    ///
+    /// @note This function does not call the simulator, it returns the location
+    /// received in the last tick.
+    geom::GeoLocation GetGeoLocation() const;
+
     /// Return the current transform of the actor.
     ///
     /// @note This function does not call the simulator, it returns the

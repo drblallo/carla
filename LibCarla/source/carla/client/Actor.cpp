@@ -16,6 +16,16 @@ namespace client {
     return GetEpisode().Lock()->GetActorLocation(*this);
   }
 
+  geom::GeoLocation Actor::GetGeoLocation() const
+  {
+    const geom::Location loc = GetLocation();
+    auto episode = GetEpisode().Lock();                    
+    const auto &geo_ref = episode->GetCurrentMap()
+                             ->GetGeoReference();        
+
+    return geo_ref.Transform(loc);                         
+  }
+
   geom::Transform Actor::GetTransform() const {
     return GetEpisode().Lock()->GetActorTransform(*this);
   }

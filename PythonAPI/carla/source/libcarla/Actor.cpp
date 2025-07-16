@@ -109,6 +109,7 @@ void export_actor() {
       .add_property("bounding_box", CALL_RETURNING_COPY(cc::Actor, GetBoundingBox))
       .def("get_world", CALL_RETURNING_COPY(cc::Actor, GetWorld))
       .def("get_location", &cc::Actor::GetLocation)
+      .def("get_geolocation", &cc::Actor::GetGeoLocation)
       .def("get_transform", &cc::Actor::GetTransform)
       .def("get_velocity", &cc::Actor::GetVelocity)
       .def("get_angular_velocity", &cc::Actor::GetAngularVelocity)
