@@ -118,6 +118,7 @@ try:
     from pygame.locals import K_d
     from pygame.locals import K_f
     from pygame.locals import K_g
+    from pygame.locals import K_y
     from pygame.locals import K_h
     from pygame.locals import K_i
     from pygame.locals import K_l
@@ -432,6 +433,8 @@ class KeyboardControl(object):
                     world.toggle_radar()
                 elif event.key == K_BACKQUOTE:
                     world.camera_manager.next_sensor()
+                elif event.key == K_y:
+                    client.set_vodafone_alert_image(4)
                 elif event.key == K_n:
                     world.camera_manager.next_sensor()
                 elif event.key == K_w and (pygame.key.get_mods() & KMOD_CTRL):

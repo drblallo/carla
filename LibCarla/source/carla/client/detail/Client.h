@@ -470,6 +470,8 @@ namespace detail {
     std::vector<rpc::LabelledPoint> CastRay(
         geom::Location start_location, geom::Location end_location) const;
 
+    void SetVodafoneAlertImage(int32_t index); 
+
   private:
 
     class Pimpl;

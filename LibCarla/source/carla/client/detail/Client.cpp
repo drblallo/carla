@@ -760,6 +760,12 @@ namespace detail {
     return _pimpl->CallAndWait<return_t>("cast_ray", start_location, end_location);
   }
 
+    void Client::SetVodafoneAlertImage(int32_t index)
+    {
+      _pimpl->AsyncCall("set_vodafone_alert_image", index);
+    }
+
+
 } // namespace detail
 } // namespace client
 } // namespace carla

@@ -7,6 +7,7 @@
 #include "Carla.h"
 #include "Carla/Server/CarlaServer.h"
 #include "Carla/Server/CarlaServerResponse.h"
+#include "Carla/Vehicle/AMaterialChangerActor.h"
 #include "Carla/Traffic/TrafficLightGroup.h"
 #include "EngineUtils.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -3050,6 +3051,14 @@ BIND_SYNC(is_sensor_enabled_for_ros) << [this](carla::streaming::detail::stream_
     return URayTracer::CastRay(StartLocation, EndLocation, World);
   };
 
+
+  BIND_SYNC(set_vodafone_alert_image) << [this](int32_t image_index) -> R<void>
+  {
+    AsyncTask(ENamedThreads::GameThread, [this, image_index]() {
+        setUserActorDisplayedSignal(image_index);
+    });
+    return R<void>::Success(); 
+  };
 }
 
 // =============================================================================

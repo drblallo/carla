@@ -823,6 +823,17 @@ namespace detail {
 
     /// @}
 
+    /// @}
+    // =========================================================================
+    /// @name vodafone
+    // =========================================================================
+    /// @{
+
+    void SetVodafoneAlertImage(int32_t index) {
+      _client.SetVodafoneAlertImage(index);
+    }
+
+
   private:
 
     bool ShouldUpdateMap(rpc::MapInfo& map_info);
