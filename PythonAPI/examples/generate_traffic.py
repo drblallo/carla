@@ -212,7 +212,7 @@ def main():
     synchronous_master = False
     seed = args.seed if args.seed is not None else int(time.time())
     random.seed(seed)
-    step_client = CarlaStepClient()
+    # step_client = CarlaStepClient()
 
     try:
         world = client.get_world()
@@ -445,11 +445,12 @@ def main():
                 index = 0
                 if second_passed:
                   for actor in all_vehicle_actors + all_walkers_actor:
-                    vel = actor.get_velocity()
-                    pos = actor.get_location()
-                    geo_loc = get_geolocation(world, pos.x, pos.y, pos.z)
+                    # vel = actor.get_velocity()
+                    # pos = actor.get_location()
+                    geo_loc = actor.get_geolocation()
+                    print(geo_loc)
                     # print(f"{actor.type_id}, {actor.id}, {elapsed_time}, {geo_loc.latitude}, {geo_loc.longitude}, {geo_loc.altitude}, {3.6 * vel.x}, {3.6 * vel.y}, {3.6 * vel.z}")
-                    step_client.send_message(geo_loc.latitude, geo_loc.longitude, int(vel.length() / 100) , 0, index)
+                    # step_client.send_message(geo_loc.latitude, geo_loc.longitude, int(vel.length() / 100) , 0, index)
                     index = index + 1
                 world.tick()
             else:

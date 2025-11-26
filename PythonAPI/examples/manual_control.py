@@ -214,6 +214,7 @@ class World(object):
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = args.filter
+        self.spawn_index = args.spawn_index
         self._actor_generation = args.generation
         self._gamma = args.gamma
         self.restart()
@@ -248,7 +249,7 @@ class World(object):
         blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
         if not blueprint_list:
             raise ValueError("Couldn't find any blueprints with the specified filters")
-        blueprint = random.choice(blueprint_list)
+        blueprint = blueprint_list[2]
         blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('terramechanics'):
             blueprint.set_attribute('terramechanics', 'true')
@@ -281,7 +282,7 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+            spawn_point = spawn_points[self.spawn_index] if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
@@ -395,7 +396,7 @@ class KeyboardControl(object):
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
     def parse_events(self, client, world, clock, sync_mode):
-        world.camera_manager.rotate_camera(*pygame.mouse.get_rel())
+        #world.camera_manager.rotate_camera(*pygame.mouse.get_rel())
         if isinstance(self._control, carla.VehicleControl):
             current_lights = self._lights
         for event in pygame.event.get():
@@ -724,7 +725,7 @@ class HUD(object):
             u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
             'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
             'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),
-            'Location:% 20s' % ('(% 5.1f, % 5.1f)' % (t.location.x, t.location.y)),
+            'Location:% 20s' % ('(% 5.1f, % 5.1f, % 5.1f)' % (t.location.x, t.location.y, t.location.z)),
             'GNSS:% 24s' % ('(% 2.6f, % 3.6f)' % (world.gnss_sensor.lat, world.gnss_sensor.lon)),
             'Height:  % 18.0f m' % t.location.z,
             '']
@@ -1328,6 +1329,8 @@ def game_loop(args):
         world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
 
+        engine_sound = EngineSound(world)
+
         if args.sync:
             sim_world.tick()
         else:
@@ -1341,6 +1344,7 @@ def game_loop(args):
             if controller.parse_events(client, world, clock, args.sync):
                 return
             world.tick(clock)
+            engine_sound.update(clock.get_time() / 1000.0)
             world.render(display)
             pygame.display.flip()
 
@@ -1412,6 +1416,10 @@ def main():
         type=float,
         help='Gamma correction of the camera (default: 2.2)')
     argparser.add_argument(
+        '--spawn-index',
+        help='spawn index of the map',
+        default=0)
+    argparser.add_argument(
         '--sync',
         action='store_true',
         help='Activate synchronous mode execution')
@@ -1432,6 +1440,117 @@ def main():
 
     except KeyboardInterrupt:
         print('\nCancelled by user. Bye!')
+
+#### VODAFONE STUFF
+class EngineSound(object):
+    """
+    Simple engine sound controller.
+
+    - Loads ./car_sound.mp3
+    - Plays it in a loop
+    - Updates volume each frame based on vehicle throttle + speed
+    - Smooths volume changes so it doesn't jump when pressing/releasing keys
+    """
+    def __init__(self, world):
+        self.world = world
+        self.sound = None
+        self.channel = None
+        self.enabled = False
+
+        # Smoothed state
+        self.current_volume = 0.0
+        self.smoothed_throttle = 0.0
+
+        # Resolve path to car_sound.mp3 in same directory as this script
+        try:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+        except NameError:
+            # __file__ may not exist in some environments; fallback to CWD
+            base_dir = os.getcwd()
+        sound_path = os.path.join(base_dir, "car_sound.mp3")
+
+        try:
+            self.sound = pygame.mixer.Sound(sound_path)
+            # Global sound volume (max), per-frame volume is set on the channel
+            self.sound.set_volume(1.0)
+            # Play in loop
+            self.channel = self.sound.play(loops=-1)
+            self.enabled = True
+            print(f"[EngineSound] Loaded engine sound from {sound_path}")
+        except Exception as e:
+            print(f"[EngineSound] Could not load engine sound: {e}")
+            self.enabled = False
+
+        # Used for crude accel estimate from speed (if you want it later)
+        self._last_speed = 0.0
+
+    def _clamp(self, v, vmin, vmax):
+        return max(vmin, min(vmax, v))
+
+    def update(self, dt):
+        """
+        Call once per frame.
+        dt: frame time in seconds (use clock.get_time() / 1000.0)
+        """
+        if not self.enabled or self.channel is None:
+            return
+        if self.world.player is None:
+            return
+
+        # --- Get vehicle state ---
+        v = self.world.player.get_velocity()
+        speed = math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2)  # m/s
+
+        try:
+            control = self.world.player.get_control()
+        except RuntimeError:
+            # Player might be destroyed during restart
+            return
+
+        raw_throttle = getattr(control, "throttle", 0.0)
+
+        # Normalize speed (assume ~40 m/s ≈ 144 km/h as "max")
+        max_speed = 40.0
+        speed_norm = self._clamp(speed / max_speed, 0.0, 1.0)
+
+        # Optional: crude longitudinal accel estimate from speed difference
+        if dt > 0:
+            accel = (speed - self._last_speed) / dt
+        else:
+            accel = 0.0
+        self._last_speed = speed
+        # accel is currently *not* used in volume to avoid spikes,
+        # but you can add a small boost if you want.
+
+        # --- Smooth the throttle so it doesn't jump 0 -> 1 instantly ---
+        throttle_smooth_time = 0.1  # seconds
+        if dt > 0:
+            alpha_t = 1.0 - math.exp(-dt / throttle_smooth_time)
+        else:
+            alpha_t = 1.0
+        self.smoothed_throttle += (raw_throttle - self.smoothed_throttle) * alpha_t
+        self.smoothed_throttle = self._clamp(self.smoothed_throttle, 0.0, 1.0)
+
+        # --- Compute target volume (no sudden jumps here) ---
+        base_idle = 0.2  # always some engine hum
+        target_volume = base_idle + self.smoothed_throttle * 0.6 + speed_norm * 0.2
+        target_volume = self._clamp(target_volume, 0.0, 1.0)
+
+        # --- Smooth the volume towards target_volume ---
+        smooth_time = 0.15  # seconds (~150ms fade)
+        if dt > 0:
+            alpha = 1.0 - math.exp(-dt / smooth_time)
+        else:
+            alpha = 1.0
+
+        self.current_volume += (target_volume - self.current_volume) * alpha
+        self.current_volume = self._clamp(self.current_volume, 0.0, 1.0)
+
+        # Apply final volume to the playing channel
+        self.channel.set_volume(self.current_volume)
+
+
+
 
 
 if __name__ == '__main__':
