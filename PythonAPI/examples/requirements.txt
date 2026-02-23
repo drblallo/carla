@@ -5,3 +5,5 @@ pygame
 matplotlib
 open3d
 Pillow
+websocket-client
+python-dispatch

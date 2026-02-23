@@ -20,7 +20,7 @@ import carla  # type: ignore
 from numpy import random
 
 from utils import (
-    CarlaConfig, load_config, get_actor_blueprints, 
+    CarlaConfig, load_config, get_actor_blueprints,
     send_vehicle_cam, send_walker_cam, save_combined_data,
     setup_world_settings, setup_traffic_manager, initialize_recorders,
     print_performance_stats, cleanup_simulation, spawn_vehicles, spawn_walkers
@@ -44,12 +44,12 @@ def run_simulation(config: CarlaConfig):
     vehicles_list = []
     walkers_list = []
     all_id = []
-    
+
     # Setup random seed
     seed = config.simulation.seed if config.simulation.seed is not None else int(time.time())
     random.seed(seed)
     logger.info(f"Random seed set to: {seed}")
-    
+
     # Connect to CARLA
     client = carla.Client(config.simulation.host, config.simulation.port)
     client.set_timeout(config.simulation.timeout)
@@ -59,7 +59,7 @@ def run_simulation(config: CarlaConfig):
     # Initialize recorders
     trajectory_recorder = None
     collision_detector = None
-    
+
     #activate all light of the cars   [PA]
     #light_state = carla.VehicleLightState(carla.VehicleLightState.All)
 
@@ -76,11 +76,11 @@ def run_simulation(config: CarlaConfig):
         traffic_manager = setup_traffic_manager(client, config)
         logger.info("Traffic manager configured")
 
-        # Configure simulation settings  
+        # Configure simulation settings
         settings = world.get_settings()
         synchronous_master = setup_world_settings(world, config, synchronous_master)
         logger.info(f"Simulation settings configured - Synchronous: {not config.simulation.asynch}")
-        
+
         if not config.simulation.asynch:
             traffic_manager.set_synchronous_mode(True)
 
@@ -105,7 +105,7 @@ def run_simulation(config: CarlaConfig):
 
         if config.v2x.enabled:
             #v2x_client = CarlaStepClient(config.v2x.log_file, station_id=config.v2x.station_id)   [PA]
-            v2x_client = CarlaStepClient(config.v2x.log_file)   
+            v2x_client = CarlaStepClient(config.v2x.log_file)
             logger.info(f"V2X client initialized with frequency {config.v2x.frequency} Hz")
 
         # Wait for initial tick
@@ -123,7 +123,7 @@ def run_simulation(config: CarlaConfig):
         try:
             while True:
                 start_time = time.perf_counter()
-       
+
                 # Handle both sync and async modes
                 if not config.simulation.asynch and synchronous_master:
                     world.tick()
@@ -141,7 +141,7 @@ def run_simulation(config: CarlaConfig):
                 # Trajectory recording
                 if config.trajectory_recording.enabled and trajectory_recorder:
                     current_frame = trajectory_recorder.frame_count
-                    
+
                     # Get vehicles using cache
                     all_vehicle_actors = trajectory_recorder.actor_manager.get_vehicles(current_frame)
                     print(f"Get vehicles number: {len(all_vehicle_actors)} ")
@@ -152,7 +152,7 @@ def run_simulation(config: CarlaConfig):
                                 #actor.set_light_state(light_state) # turn on all light of the cars [PA]
                         except Exception as e:
                             print(e)
-                    
+
                     # Get walkers using cache
                     all_walker_actors = trajectory_recorder.actor_manager.get_walkers(current_frame)
                     for actor in all_walker_actors:
@@ -161,7 +161,7 @@ def run_simulation(config: CarlaConfig):
                                 trajectory_recorder.record_actor(actor, elapsed_time, actor_type="walker")
                         except:
                             continue
-                    
+
                     trajectory_recorder.tick()
 
                 # Send V2X CAM messages
@@ -169,7 +169,7 @@ def run_simulation(config: CarlaConfig):
                     current_time = time.time()
                     if current_time - v2x_last_broadcast >= v2x_broadcast_interval:
                         v2x_last_broadcast = current_time
-                        
+
                         # Use existing actor manager cache for efficiency
                         if trajectory_recorder:
                             vehicles = trajectory_recorder.actor_manager.get_vehicles()
@@ -177,35 +177,35 @@ def run_simulation(config: CarlaConfig):
                         else:
                             vehicles = world.get_actors().filter('vehicle.*')
                             walkers = world.get_actors().filter('walker.pedestrian.*')
-                        
+
                         # Send CAMs for vehicles
                         for vehicle in vehicles:
                             if vehicle.is_alive:
                                 #print(vehicle.id)
                                 send_vehicle_cam(v2x_client, vehicle)
-                        
+
                         for walker in walkers:
                             if walker.is_alive:
                                 send_walker_cam(v2x_client, walker)
-                        
+
                 # Update collision detection
                 if collision_detector and config.collision_detection.enabled:
                     collision_detector.update(current_frame=frame_count)
-                
+
                 # Update actor lists less frequently
                 if frame_count % config.performance.actor_cache_interval == 0:
                     if trajectory_recorder:
                         trajectory_recorder.actor_manager.force_update()
                     if collision_detector:
                         collision_detector.actor_manager.force_update()
-                    
+
                     # Update global actor lists
                     vehicles_actors = trajectory_recorder.actor_manager.cached_vehicles if trajectory_recorder else world.get_actors().filter('vehicle.*')
                     vehicles_list = [v.id for v in vehicles_actors if hasattr(v, 'is_alive') and v.is_alive]
-                    
+
                     walker_actors = trajectory_recorder.actor_manager.cached_walkers if trajectory_recorder else world.get_actors().filter('walker.pedestrian.*')
                     controller_actors = collision_detector.actor_manager.cached_controllers if collision_detector else world.get_actors().filter('controller.ai.walker')
-                    
+
                     # Rebuild walkers_list
                     walkers_list = []
                     for walker in walker_actors:
@@ -215,21 +215,21 @@ def run_simulation(config: CarlaConfig):
                                 walkers_list.append({'id': walker.id, 'con': controller.id if controller else None})
                         except:
                             continue
-                
+
                 frame_count += 1
                 end_time = time.perf_counter()
                 tempo_ms = (end_time - start_time) * 1000  # Convert to milliseconds
                 tempi_steps.append(tempo_ms)
 
-                
+
                 # Log progress periodically
                 if frame_count % 100 == 0:
                     logger.debug(f"Frame {frame_count}, Elapsed time: {elapsed_time:.2f}s, Step time: {tempo_ms:.2f}ms")
-                
+
         except KeyboardInterrupt:
             logger.info("Simulation interrupted by user")
             pass
-    
+
     finally:
         # Print performance statistics
         logger.info("Simulation ended, calculating performance statistics")
@@ -242,12 +242,12 @@ def run_simulation(config: CarlaConfig):
                 logger.info(f"Data saved to: {config.trajectory_recording.output_file}")
                 logger.info(f"Trajectories: {len(combined_data['trajectories']['vehicles'])} vehicles, {len(combined_data['trajectories']['walkers'])} walkers")
                 logger.info(f"Collisions: {len(combined_data['collisions']['events'])} events")
-                
+
             elif trajectory_recorder:
                 trajectory_recorder.save()
                 stats = trajectory_recorder.get_stats()
                 logger.info(f"Trajectory data saved. {stats['vehicle_count']} vehicles, {stats['walker_count']} walkers")
-            
+
             elif collision_detector:
                 collision_stats = collision_detector.get_collision_statistics()
                 collision_data = {
@@ -260,10 +260,10 @@ def run_simulation(config: CarlaConfig):
                 with open(config.trajectory_recording.output_file, 'wb') as f:
                     pickle.dump(collision_data, f)
                 logger.info(f"Collision data saved. {collision_stats['total_collisions']} collisions detected")
-        
+
         # Cleanup simulation
         logger.info("Cleaning up simulation resources")
-        cleanup_simulation(world, config, synchronous_master, vehicles_list, all_id, 
+        cleanup_simulation(world, config, synchronous_master, vehicles_list, all_id,
                          trajectory_recorder, collision_detector)
 
 
@@ -273,14 +273,14 @@ def main():
     config_file = "VFA_carla_scripts/config.yaml"
     if len(sys.argv) > 1:
         config_file = sys.argv[1]
-    
+
     config = load_config(config_file)
-    
+
     logger.info(f"Starting CARLA traffic simulation with config: {config_file}")
     logger.info(f"Vehicles: {config.vehicles.number}, Walkers: {config.walkers.number}")
     logger.info(f"V2X enabled: {config.v2x.enabled}, Trajectory recording: {config.trajectory_recording.enabled}")
     logger.info(f"Collision detection: {config.collision_detection.enabled}")
-    
+
     try:
         run_simulation(config)
     except KeyboardInterrupt:

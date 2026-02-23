@@ -714,7 +714,7 @@ class CarlaStepClient:
             longitude=longitude,
             accuracy=500,
             speed=speed,
-            heading=heading,
+            heading=int(heading),
         )
         address = GeoNetworkAddress(
             is_manual_configured=True,
