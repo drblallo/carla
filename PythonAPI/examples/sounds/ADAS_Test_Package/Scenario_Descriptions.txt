@@ -1,0 +1,22 @@
+ADAS SOUND TEST – SCENARIO DESCRIPTIONS
+
+1. Pedoni improvvisi (L4 – MASTER ALERT)
+Obiettivo: arresto immediato del veicolo.
+
+2. Collisione veicolare (L4)
+Obiettivo: frenata o manovra evasiva immediata.
+
+3. Mezzo di emergenza (L3)
+Obiettivo: liberare corsia in modo ordinato.
+
+4. Incidente nelle vicinanze (L3)
+Obiettivo: preparazione cognitiva al rischio.
+
+5. Lavori in corso (L2–L3)
+Obiettivo: attenzione sostenuta e prudenza.
+
+6. Traffico intenso (L2)
+Obiettivo: riduzione immediata della velocità.
+
+7. Veicolo lento / colonna (L1–L2)
+Obiettivo: adattamento alla condizione persistente.
