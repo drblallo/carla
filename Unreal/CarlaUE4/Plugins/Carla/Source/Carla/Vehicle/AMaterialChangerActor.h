@@ -5,7 +5,7 @@
 
 #include "AMaterialChangerActor.generated.h"
 
-UCLASS()
+UCLASS(BlueprintType, Blueprintable)
 class CARLA_API AMaterialChangerActor : public AActor {
   GENERATED_BODY()
 
@@ -14,6 +14,8 @@ public:
 
   // Called every second by the Timer to change the material
   void ChangeMaterial(size_t newMaterialIndex = -1);
+  void ChangeMaterial2();
+
 protected:
   // Called when the game starts or when spawned
   virtual void BeginPlay() override;
@@ -28,6 +30,9 @@ private:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MaterialChanger",
             meta = (AllowPrivateAccess = "true"))
   TArray<UMaterialInterface *> MaterialList;
+
+  UPROPERTY(EditAnywhere, Category = "Materials")
+  int32 DebugCounter = 0;
 
   // **Exposed** name of the Actor in the level (to look for). Settable in the
   // Editor.
@@ -47,7 +52,6 @@ private:
 
   // Used to keep track of which Material we're on
   int32 CurrentMaterialIndex;
-
 
   // Helper function to locate the desired Actor and Mesh
   void FindTargetActorAndMesh();

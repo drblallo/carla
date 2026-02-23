@@ -19,13 +19,12 @@ AMaterialChangerActor::AMaterialChangerActor() {
   TargetMeshName = TEXT("MeshComponentName"); // can override in the Editor
 }
 
-static TArray<AMaterialChangerActor*> actors;
+static TArray<AMaterialChangerActor *> actors;
 
 // Called when the game starts or when spawned
 void AMaterialChangerActor::BeginDestroy() {
   Super::BeginDestroy();
   actors.Remove(this);
-
 }
 
 // Called when the game starts or when spawned
@@ -34,15 +33,14 @@ void AMaterialChangerActor::BeginPlay() {
   actors.Add(this);
 
   // Start a recurring timer that calls ChangeMaterial() every second
-  // if (MaterialList.Num() > 0) {
-  // GetWorldTimerManager().SetTimer(MaterialChangeTimerHandle, this,
-  //&AMaterialChangerActor::ChangeMaterial,
-  // 1.0f, // Interval (seconds)
-  // true  // bLoop
-  //);
-  //}
+  if (MaterialList.Num() > 0) {
+    GetWorldTimerManager().SetTimer(MaterialChangeTimerHandle, this,
+                                    &AMaterialChangerActor::ChangeMaterial2,
+                                    1.0f, // Interval (seconds)
+                                    true  // bLoop
+    );
+  }
 }
-
 
 // Helper function to locate the desired Actor and Mesh
 void AMaterialChangerActor::FindTargetActorAndMesh() {
@@ -70,6 +68,9 @@ void AMaterialChangerActor::FindTargetActorAndMesh() {
 }
 
 // Every second, this cycles to the next Material
+void AMaterialChangerActor::ChangeMaterial2() { CurrentMaterialIndex += 1; }
+
+// Every second, this cycles to the next Material
 void AMaterialChangerActor::ChangeMaterial(size_t newMaterialIndex) {
 
   // Find the Actor and Mesh by name
@@ -89,6 +90,6 @@ void AMaterialChangerActor::ChangeMaterial(size_t newMaterialIndex) {
 }
 
 void setUserActorDisplayedSignal(size_t newMaterialIndex) {
-    printf("called\n");
-    actors[0]->ChangeMaterial(newMaterialIndex);
+  printf("called\n");
+  actors[0]->ChangeMaterial(newMaterialIndex);
 }
