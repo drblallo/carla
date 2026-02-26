@@ -160,7 +160,7 @@ class World(object):
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         while self.player is None:
             spawn_points = self.world.get_map().get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+            spawn_point = spawn_points[0] if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
@@ -676,6 +676,13 @@ class CameraManager(object):
         self.hud = hud
         self.recording = False
         self._camera_transforms = [
+            carla.Transform(carla.Location(x=-0.2, y=-0.27, z=1.15), carla.Rotation(pitch=-0.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.15), carla.Rotation(pitch=-0.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.39, z=1.15), carla.Rotation(pitch=-0.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-0.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-5.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-10.0)),
+            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-15.0)),
             carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15)),
             carla.Transform(carla.Location(x=1.6, z=1.7))]
         self.transform_index = 1
@@ -780,7 +787,7 @@ def game_loop(args):
 
         display = pygame.display.set_mode(
             (args.width, args.height),
-            pygame.HWSURFACE | pygame.DOUBLEBUF)
+            pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.FULLSCREEN, display=1)
 
         hud = HUD(args.width, args.height)
         world = World(client.get_world(), hud, args.filter)

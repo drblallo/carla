@@ -17,8 +17,8 @@ import random
 import threading
 import sys
 import glob
-import sub_data
 import os
+import sub_data
 
 SCREEN_OFF = 0
 ACCIDENT = 1
@@ -30,6 +30,10 @@ EMERGENCY_VEHICLE = 6
 INCIDENT_NERBY = 7
 
 DURATA_VISIVA = 1
+
+def show_image(client, img, subscriber, name):
+    client.set_vodafone_alert_image(img)
+    subscriber.inject_marker(time.time()*1000, name, name)
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -99,7 +103,8 @@ def find_ego_vehicle(world: "carla.World", role_name: str):
 
 import subprocess
 
-def play_sound(path: str):
+def play_sound(path: str, cortex_subscriber, key):
+    cortex_subscriber.inject_marker(time.time()*1000, key, key)
     subprocess.Popen(["aplay", path],
                      stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
@@ -282,16 +287,16 @@ def scenario7(client: "carla.Client",
         if trigger_distance > distance:
             break
 
-    client.set_vodafone_alert_image(HUMAN_PERSENCE)
+    show_image(client, SLOW_VEHICHLE, subscriber, "SLOW_VEHICHLE")
     release_vehicle_queue_to_traffic_manager(client, queued_vehicles, args)
     wait_for(world, 1)
-    play_sound("./sounds/ADAS_Test_Package/alert_slow_vehicle_FAR.wav")
-    client.set_vodafone_alert_image(SCREEN_OFF)
+    play_sound("./sounds/ADAS_Test_Package/alert_slow_vehicle_FAR.wav",subscriber, "sound7")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/veicolo_lento_notte_2.wav")
+        play_sound("./sounds/ALERT VOCALI NOTTE/veicolo_lento_notte_2.wav",subscriber, "vocal7_night")
     else:
-        play_sound("./sounds/day/veicolo_lento_giorno_2.wav")
+        play_sound("./sounds/day/veicolo_lento_giorno_2.wav", subscriber, "vocal7_day")
+    client.set_vodafone_alert_image(SCREEN_OFF)
 
 
 def scenario6(client: "carla.Client",
@@ -337,16 +342,16 @@ def scenario6(client: "carla.Client",
 
     wait_for(world, 5)
 
-    client.set_vodafone_alert_image(EMERGENCY_VEHICLE)
+    show_image(client, EMERGENCY_VEHICLE, subscriber, "EMERGENCY_VEHICLE")
     wait_for(world, 1)
-    client.set_vodafone_alert_image(SCREEN_OFF)
-    play_sound("./sounds/ADAS_Test_Package/alert_emergency_MID.wav")
+    play_sound("./sounds/ADAS_Test_Package/alert_emergency_MID.wav", subscriber, "sound6")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/mezzo_emergenza_notte_1.wav")
+        play_sound("./sounds/ALERT VOCALI NOTTE/mezzo_emergenza_notte_1.wav", subscriber, "vocal6_night")
     else:
-        play_sound("./sounds/day/Mezzo_emergenza_giorno_1.wav")
+        play_sound("./sounds/day/Mezzo_emergenza_giorno_1.wav", subscriber, "vocal6_day")
     wait_for(world, 1)
+    client.set_vodafone_alert_image(SCREEN_OFF)
 
 def scenario5(client: "carla.Client",
               world: "carla.World",
@@ -367,15 +372,15 @@ def scenario5(client: "carla.Client",
             break
 
 
-    client.set_vodafone_alert_image(INCIDENT_NERBY)
+    show_image(client, INCIDENT_NERBY, subscriber, "INCIDENT")
     wait_for(world, 1)
-    client.set_vodafone_alert_image(SCREEN_OFF)
-    play_sound("./sounds/ADAS_Test_Package/alert_incident_MID.wav")
+    play_sound("./sounds/ADAS_Test_Package/alert_incident_MID.wav", subscriber, "sound5")
     wait_for(world, 1)
     if day:
-        play_sound("./sounds/day/Incidente_giorno_3.wav")
+        play_sound("./sounds/day/Incidente_giorno_3.wav", subscriber, "vocal5_day")
     else:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Incidente_notte_4.wav")
+        play_sound("./sounds/ALERT VOCALI NOTTE/Incidente_notte_4.wav", subscriber, "vocal5_night")
+    client.set_vodafone_alert_image(SCREEN_OFF)
     wait_for(world, 1)
 
 
@@ -409,15 +414,15 @@ def scenario4(client: "carla.Client",
         if trigger_distance > distance:
             break
 
-    client.set_vodafone_alert_image(TRAFFIC)
+    show_image(client, TRAFFIC, subscriber, "TRAFFIC")
     wait_for(world, 1)
-    client.set_vodafone_alert_image(SCREEN_OFF)
-    play_sound("./sounds/ADAS_Test_Package/alert_traffic_MID.wav")
+    play_sound("./sounds/ADAS_Test_Package/alert_traffic_MID.wav", subscriber, "sound4")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Traffico_intenso_notte_3.wav")
+        play_sound("./sounds/ALERT VOCALI NOTTE/Traffico_intenso_notte_3.wav", subscriber, "vocal4_night")
     else:
-        play_sound("./sounds/day/Traffico_intenso_giorno_1.wav")
+        play_sound("./sounds/day/Traffico_intenso_giorno_1.wav", subscriber, "vocal4_day")
+    client.set_vodafone_alert_image(SCREEN_OFF)
 
     wait_for(world, 4)
     release_vehicle_queue_to_traffic_manager(client, queued_vehicles, args)
@@ -438,14 +443,14 @@ def scenario2(client: "carla.Client",
 
         ego_loc = ego_vehicle.get_location()
         if 10 > ego_loc.distance(location) :
-            client.set_vodafone_alert_image(ROADWORKS)
+            show_image(client, ROADWORKS, subscriber, "ROADWORKS")
             wait_for(world, 1)
-            play_sound("sounds/ADAS_Test_Package/alert_roadworks_MID.wav")
+            play_sound("sounds/ADAS_Test_Package/alert_roadworks_MID.wav", subscriber, "sound2")
             wait_for(world, 1)
             if night:
-                play_sound("sounds/ALERT VOCALI NOTTE/Lavori_in_corso_notte_3.wav")
+                play_sound("sounds/ALERT VOCALI NOTTE/Lavori_in_corso_notte_3.wav", subscriber, "vocal2_night")
             else:
-                play_sound("sounds/day/Lavori_in_corso_giorno_1.wav")
+                play_sound("sounds/day/Lavori_in_corso_giorno_1.wav", subscriber, "vocal2_day")
             break
 
     wait_for(world, 1.5)
@@ -577,16 +582,16 @@ def scenario1(client: "carla.Client",
             world.set_pedestrians_cross_factor(1.0)
             triggered = True
 
-    client.set_vodafone_alert_image(HUMAN_PERSENCE)
+    show_image(client,HUMAN_PERSENCE, subscriber, "HUMAN_PRESENCE")
     wait_for(world, DURATA_VISIVA)
-    client.set_vodafone_alert_image(SCREEN_OFF)
     wait_for(world, 1)
-    play_sound("./sounds/ADAS_Test_Package/alert_pedoni_NEAR(1).wav")
+    play_sound("./sounds/ADAS_Test_Package/alert_pedoni_NEAR(1).wav", subscriber, "sound1")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Attenzione_pedoni_notte1.wav")
+        play_sound("./sounds/ALERT VOCALI NOTTE/Attenzione_pedoni_notte1.wav", subscriber, "vocal0_night")
     else:
-        play_sound("./sounds/day/Attenzione_pedoni_giorno2.wav")
+        play_sound("./sounds/day/Attenzione_pedoni_giorno2.wav", subscriber, "vocal1_day")
+    client.set_vodafone_alert_image(SCREEN_OFF)
     wait_for(world, 8)
 
     cleanup(walker, controller)
@@ -639,7 +644,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    cortex_subscriber = sub_data.start() if False else None
+    cortex_subscriber = sub_data.start()
     time.sleep(2)
 
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -695,8 +700,8 @@ def main():
     target_sun_value = 10
     scenario7(client, world, ego_vehicle, args, cortex_subscriber)
 
-    # cortex_subscriber.stop_record()
-    # cortex_subscriber.join()
+    #cortex_subscriber.stop_record()
+    #cortex_subscriber.join()
 
 
     scenario5(client, world, ego_vehicle, args, cortex_subscriber, False, carla.Location(-302, 81, 149))
@@ -710,6 +715,10 @@ def main():
     spawned = scenario4(client, world, ego_vehicle, args, cortex_subscriber, True, queue_location=carla.Location(105, -480, 153), location=carla.Location(31, -541, 158))
 
     scenario6(client, world, ego_vehicle, args, cortex_subscriber, True, trigger_point=carla.Location(714, 39, 134), spawn_point=carla.Location(676, 5.4, 135))
+
+    cortex_subscriber.stop_record()
+    cortex_subscriber.join()
+
 
 if __name__ == "__main__":
     main()

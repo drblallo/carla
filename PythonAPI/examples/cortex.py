@@ -926,6 +926,7 @@ class Cortex(Dispatcher):
             "method": "exportRecord",
             "params": params_val
         }
+        print(export_record_request)
 
         if self.debug:
             print('export record request \n',
@@ -950,6 +951,7 @@ class Cortex(Dispatcher):
             "method": "injectMarker",
             "params": params_val
         }
+        print(inject_marker_request)
         if self.debug:
             print('inject marker request \n', json.dumps(inject_marker_request, indent=4))
         self.ws.send(json.dumps(inject_marker_request))
