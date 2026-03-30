@@ -56,6 +56,7 @@ import math
 import random
 import re
 import weakref
+import car_sound
 
 if sys.version_info >= (3, 0):
 
@@ -126,19 +127,29 @@ def get_actor_display_name(actor, truncate=250):
 
 
 class World(object):
-    def __init__(self, carla_world, hud, actor_filter):
+    def __init__(self, carla_world, hud, actor_filter, collision_sound):
         self.world = carla_world
         self.hud = hud
         self.player = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
         self.gnss_sensor = None
+        self.collision_sound = collision_sound
         self.camera_manager = None
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = actor_filter
         self.restart()
         self.world.on_tick(hud.on_world_tick)
+
+    def to_nearest_respawn(self, points):
+        player_loc = self.player.get_location()
+        nearest_input_location = min(points, key=lambda loc: loc.distance(player_loc))
+        nearest_waypoint = self.world.get_map().get_waypoint(nearest_input_location, project_to_road=True, lane_type=carla.LaneType.Driving)
+        self.player.set_simulate_physics(False)
+        self.player.set_transform(nearest_waypoint.transform)
+        self.player.set_simulate_physics(True)
+
 
     def restart(self):
         # Keep same camera config if the camera manager exists.
@@ -162,8 +173,9 @@ class World(object):
             spawn_points = self.world.get_map().get_spawn_points()
             spawn_point = spawn_points[0] if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+            self.player.set_light_state(carla.VehicleLightState.HighBeam)
         # Set up the sensors.
-        self.collision_sensor = CollisionSensor(self.player, self.hud)
+        self.collision_sensor = CollisionSensor(self.player, self.hud, self.collision_sound)
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
         self.gnss_sensor = GnssSensor(self.player)
         self.camera_manager = CameraManager(self.player, self.hud)
@@ -205,8 +217,10 @@ class World(object):
 
 
 class DualControl(object):
-    def __init__(self, world, start_in_autopilot):
+    def __init__(self, world, start_in_autopilot, HUD):
+        self.world = world
         self._autopilot_enabled = start_in_autopilot
+        self.HUD = HUD
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             world.player.set_autopilot(self._autopilot_enabled)
@@ -240,13 +254,25 @@ class DualControl(object):
         self._handbrake_idx = int(
             self._parser.get('G29 Racing Wheel', 'handbrake'))
 
+        self.respawn_points = [carla.Location(390, 160, 0), ]
+        self.candidates = [carla.Location(549, 498, 0), carla.Location(318, 439, 0),  carla.Location(83, 185, 0),  carla.Location(-187, 143, 0),  carla.Location(-129, -42, 0),  carla.Location(2.8, -116, 0),  carla.Location(-271, -431, 0), carla.Location(-32, -597, 0), carla.Location(541, -106, 0)]
+
     def parse_events(self, world, clock):
+    
+        pos = world.player.get_location()
+        pos.z = 0
+        for i in range(len(self.candidates)): 
+            if pos.distance(self.candidates[i]) < 10:
+                self.respawn_points.append(self.candidates[i])
+                del self.candidates[i]
+                break
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return True
             elif event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 0:
-                    world.restart()
+                    world.to_nearest_respawn(self.respawn_points)
                 elif event.button == 1:
                     world.hud.toggle_info()
                 elif event.button == 2:
@@ -334,7 +360,12 @@ class DualControl(object):
         K2 = 1.6  # 1.6
         throttleCmd = K2 + (2.05 * math.log10(
             -0.7 * jsInputs[self._throttle_idx] + 1.4) - 1.2) / 0.92
-        if throttleCmd <= 0:
+        if 0.8 > jsInputs[self._throttle_idx]:
+            print(jsInputs[self._throttle_idx])
+            self.HUD.starting = False
+        if self.world.player.get_velocity().length() * 3.6 >= 50:
+            throttleCmd = 0
+        elif throttleCmd <= 0:
             throttleCmd = 0
         elif throttleCmd > 1:
             throttleCmd = 1
@@ -390,6 +421,9 @@ class HUD(object):
         mono = default_font if default_font in fonts else fonts[0]
         mono = pygame.font.match_font(mono)
         self._font_mono = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
+        self._font_mono_large = pygame.font.Font(mono, 100 if os.name == 'nt' else 100)
+        self.starting = True
+        self.ended = False
         self._notifications = FadingText(font, (width, 40), (0, height - 40))
         self.help = HelpText(pygame.font.Font(mono, 24), width, height)
         self.server_fps = 0
@@ -410,6 +444,8 @@ class HUD(object):
         if not self._show_info:
             return
         t = world.player.get_transform()
+        if 10 > t.location.distance(carla.Location(980, 270, t.location.z)):
+            self.ended = True
         v = world.player.get_velocity()
         c = world.player.get_control()
         heading = 'N' if abs(t.rotation.yaw) < 89.5 else ''
@@ -454,15 +490,15 @@ class HUD(object):
             collision,
             '',
             'Number of vehicles: % 8d' % len(vehicles)]
-        if len(vehicles) > 1:
-            self._info_text += ['Nearby vehicles:']
-            distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
-            vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != world.player.id]
-            for d, vehicle in sorted(vehicles):
-                if d > 200.0:
-                    break
-                vehicle_type = get_actor_display_name(vehicle, truncate=22)
-                self._info_text.append('% 4dm %s' % (d, vehicle_type))
+        #if len(vehicles) > 1:
+            #self._info_text += ['Nearby vehicles:']
+            #distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
+            #vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != world.player.id]
+            #for d, vehicle in sorted(vehicles):
+                #if d > 200.0:
+                    #break
+                #vehicle_type = get_actor_display_name(vehicle, truncate=22)
+                #self._info_text.append('% 4dm %s' % (d, vehicle_type))
 
     def toggle_info(self):
         self._show_info = not self._show_info
@@ -508,6 +544,13 @@ class HUD(object):
                     surface = self._font_mono.render(item, True, (255, 255, 255))
                     display.blit(surface, (8, v_offset))
                 v_offset += 18
+        if self.starting:
+                surface = self._font_mono_large.render("PARTENZA!", True, (255, 255, 255))
+                display.blit(surface, (2400, 400))
+        if self.ended:
+                surface = self._font_mono_large.render("FINE DEL VIAGGIO!", True, (255, 255, 255))
+                display.blit(surface, (2300, 400))
+
         self._notifications.render(display)
         self.help.render(display)
 
@@ -575,7 +618,7 @@ class HelpText(object):
 
 
 class CollisionSensor(object):
-    def __init__(self, parent_actor, hud):
+    def __init__(self, parent_actor, hud, collision_sound):
         self.sensor = None
         self.history = []
         self._parent = parent_actor
@@ -587,6 +630,7 @@ class CollisionSensor(object):
         # reference.
         weak_self = weakref.ref(self)
         self.sensor.listen(lambda event: CollisionSensor._on_collision(weak_self, event))
+        self.collision_sound = collision_sound
 
     def get_collision_history(self):
         history = collections.defaultdict(int)
@@ -603,6 +647,7 @@ class CollisionSensor(object):
         self.hud.notification('Collision with %r' % actor_type)
         impulse = event.normal_impulse
         intensity = math.sqrt(impulse.x**2 + impulse.y**2 + impulse.z**2)
+        self.collision_sound.play()
         self.history.append((event.frame, intensity))
         if len(self.history) > 4000:
             self.history.pop(0)
@@ -676,9 +721,9 @@ class CameraManager(object):
         self.hud = hud
         self.recording = False
         self._camera_transforms = [
-            carla.Transform(carla.Location(x=-0.2, y=-0.27, z=1.15), carla.Rotation(pitch=-0.0)),
-            carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.15), carla.Rotation(pitch=-0.0)),
-            carla.Transform(carla.Location(x=-0.2, y=-0.39, z=1.15), carla.Rotation(pitch=-0.0)),
+            #carla.Transform(carla.Location(x=-0.2, y=-0.27, z=1.15), carla.Rotation(pitch=-0.0)),
+            #carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.15), carla.Rotation(pitch=-0.0)),
+            #carla.Transform(carla.Location(x=-0.2, y=-0.39, z=1.15), carla.Rotation(pitch=-0.0)),
             carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-0.0)),
             carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-5.0)),
             carla.Transform(carla.Location(x=-0.2, y=-0.33, z=1.25), carla.Rotation(pitch=-10.0)),
@@ -700,8 +745,8 @@ class CameraManager(object):
         for item in self.sensors:
             bp = bp_library.find(item[0])
             if item[0].startswith('sensor.camera'):
-                bp.set_attribute('image_size_x', str(hud.dim[0]))
-                bp.set_attribute('image_size_y', str(hud.dim[1]))
+                bp.set_attribute('image_size_x', str(hud.dim[0]/2))
+                bp.set_attribute('image_size_y', str(hud.dim[1]/2))
             elif item[0].startswith('sensor.lidar'):
                 bp.set_attribute('range', '50')
             item.append(bp)
@@ -740,7 +785,8 @@ class CameraManager(object):
 
     def render(self, display):
         if self.surface is not None:
-            display.blit(self.surface, (0, 0))
+            scaled = pygame.transform.scale(self.surface, (self.surface.get_width()*2, self.surface.get_height()*2))
+            display.blit(scaled, (0, 0))
 
     @staticmethod
     def _parse_image(weak_self, image):
@@ -776,6 +822,7 @@ class CameraManager(object):
 # ==============================================================================
 
 
+
 def game_loop(args):
     pygame.init()
     pygame.font.init()
@@ -790,8 +837,15 @@ def game_loop(args):
             pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.FULLSCREEN, display=1)
 
         hud = HUD(args.width, args.height)
-        world = World(client.get_world(), hud, args.filter)
-        controller = DualControl(world, args.autopilot)
+        collision_sound = car_sound.CollisionSound(world, "collision_sound.mp3")
+        world = World(client.get_world(), hud, args.filter, collision_sound)
+        controller = DualControl(world, args.autopilot, hud)
+        engine_sound = car_sound.EngineSound(world)
+        ambulance_sound = car_sound.VehicleSound(world, world.player)
+        firetruck_sound = car_sound.VehicleSound(world, world.player, "./sounds/fire_truck.mp3", "fire_truck")
+        moto_sound1 = car_sound.VehicleSound(world, world.player, "./sounds/motorbike.mp3", "moto1")
+        moto_sound2 = car_sound.VehicleSound(world, world.player, "./sounds/motorbike.mp3", "moto2")
+
 
         clock = pygame.time.Clock()
         while True:
@@ -801,6 +855,11 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
+            engine_sound.update(clock.get_time() / 1000.0)
+            ambulance_sound.update(clock.get_time() / 1000.0)
+            firetruck_sound.update(clock.get_time() / 1000.0)
+            moto_sound1.update(clock.get_time() / 1000.0)
+            moto_sound2.update(clock.get_time() / 1000.0)
 
     finally:
 

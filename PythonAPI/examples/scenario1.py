@@ -28,12 +28,14 @@ TRAFFIC = 4
 HUMAN_PERSENCE = 5
 EMERGENCY_VEHICLE = 6
 INCIDENT_NERBY = 7
+COLLISION = 9
 
 DURATA_VISIVA = 1
 
 def show_image(client, img, subscriber, name):
     client.set_vodafone_alert_image(img)
-    subscriber.inject_marker(time.time()*1000, name, name)
+    if subscriber is not None:
+        subscriber.inject_marker(time.time()*1000, name, name)
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -104,19 +106,25 @@ def find_ego_vehicle(world: "carla.World", role_name: str):
 import subprocess
 
 def play_sound(path: str, cortex_subscriber, key):
-    cortex_subscriber.inject_marker(time.time()*1000, key, key)
+    if cortex_subscriber is not None:
+        cortex_subscriber.inject_marker(time.time()*1000, key, key)
     subprocess.Popen(["aplay", path],
                      stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL)
-def _pick_vehicle_blueprint(blueprint_library: "carla.BlueprintLibrary", blueprint_name = None) -> "carla.ActorBlueprint":
+def _pick_vehicle_blueprint(blueprint_library: "carla.BlueprintLibrary", blueprint_name = None, i=0) -> "carla.ActorBlueprint":
     if blueprint_name != None:
         return blueprint_library.filter(blueprint_name)[0]
 
-    vehicle_bps = blueprint_library.filter("vehicle.*")
+    vehicle_bps = [blueprint_library.filter("vehicle.mercedes.coupe_2020")[0], 
+                   blueprint_library.filter("vehicle.chevrolet.impala")[0],
+                   blueprint_library.filter("vehicle.audi.tt")[0],
+                   blueprint_library.filter("vehicle.audi.a2")[0],
+                   blueprint_library.filter("vehicle.ford.mustang")[0],
+                  ]
     if not vehicle_bps:
         raise RuntimeError("No vehicle blueprints found (filter 'vehicle.*').")
 
-    bp = random.choice(vehicle_bps)
+    bp = vehicle_bps[i]
 
     # Optional: make them easier to spot / deterministic
     if bp.has_attribute("role_name"):
@@ -154,7 +162,7 @@ def _advance_waypoint_random(wp: "carla.Waypoint", steps: int, step_m: float) ->
     return current
 
 
-def spawn_stopped_vehicle_queue(client: "carla.Client", world: "carla.World", num=10, blueprint=None, base_loc = carla.Location(413, 562, 123)) -> list["carla.Actor"]:
+def spawn_stopped_vehicle_queue(client: "carla.Client", world: "carla.World", num=5, blueprint=None, base_loc = carla.Location(413, 562, 123)) -> list["carla.Actor"]:
     """
     Spawn X vehicles one in front of the other on the road, stopped.
 
@@ -199,7 +207,7 @@ def spawn_stopped_vehicle_queue(client: "carla.Client", world: "carla.World", nu
         # First car: spawn at the spawn point transform (reliable alignment).
         # Others: spawn at the waypoint transforms derived from stepping forward.
 
-        car_bp = _pick_vehicle_blueprint(blueprint_library, blueprint)
+        car_bp = _pick_vehicle_blueprint(blueprint_library, blueprint, i)
         v = world.try_spawn_actor(car_bp, start_spawn)
         if v is None:
             continue
@@ -293,10 +301,85 @@ def scenario7(client: "carla.Client",
     play_sound("./sounds/ADAS_Test_Package/alert_slow_vehicle_FAR.wav",subscriber, "sound7")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/veicolo_lento_notte_2.wav",subscriber, "vocal7_night")
+        play_sound("./sounds/voce_femminile/Veicolo_lento.wav",subscriber, "vocal7_night")
     else:
-        play_sound("./sounds/day/veicolo_lento_giorno_2.wav", subscriber, "vocal7_day")
+        play_sound("./sounds/voce_femminile/Veicolo_lento.wav", subscriber, "vocal7_day")
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
+
+def move_ego(world, ego, pos):
+    wp = world.get_map().get_waypoint(
+        pos,
+        project_to_road=True,
+        lane_type=carla.LaneType.Driving
+    )
+    ego.set_transform(wp.transform)
+
+def scenario3(client: "carla.Client",
+              world: "carla.World",
+              ego_vehicle: "carla.Actor",
+              args,
+              subscriber,
+              night=False,
+              trigger_point=carla.Location(-256 , 143, 158),
+              spawn_point=carla.Location(-320, 105, 159)):
+
+    wp = world.get_map().get_waypoint(
+        spawn_point,
+        project_to_road=True,
+        lane_type=carla.LaneType.Driving
+    )
+    print(wp.transform.location)
+
+    while True:
+        next_sun(world)
+        world_snapshot = world.wait_for_tick()
+        loc = ego_vehicle.get_location()
+        #print(loc.distance(trigger_point))
+        if 40 > loc.distance(trigger_point):
+            break
+
+
+    spawn_points = world.get_map().get_spawn_points()
+    start_spawn = min(spawn_points, key=lambda sp: sp.location.distance(spawn_point))
+    if night:
+        bp = [x for x in world.get_blueprint_library().filter("vehicle.yamaha.yzf")][0]
+        bp.set_attribute('role_name', 'moto1')
+    else:
+        bp = [x for x in world.get_blueprint_library().filter("vehicle.yamaha.yzf")][0]
+        bp.set_attribute('role_name', 'moto2')
+
+    ambulance = world.try_spawn_actor(bp, start_spawn)
+    ambulance.set_transform(wp.transform)
+    ambulance.set_light_state(
+    carla.VehicleLightState(
+        carla.VehicleLightState.Special1 |
+        carla.VehicleLightState.Special2 |
+        carla.VehicleLightState.Position |
+        carla.VehicleLightState.LowBeam
+    )
+    )
+    tm = client.get_trafficmanager(8000)
+    ambulance.set_autopilot(True)
+    tm.vehicle_percentage_speed_difference(ambulance, -800.0)
+    tm.distance_to_leading_vehicle(ambulance, 0.1)
+    tm.ignore_lights_percentage(ambulance, 100.0)
+    tm.ignore_signs_percentage(ambulance, 100.0)
+    tm.auto_lane_change(ambulance, True)
+
+    wait_for(world, 1)
+
+    show_image(client, COLLISION, subscriber, "COLLISION")
+    wait_for(world, 1)
+    play_sound("./sounds/ADAS_Test_Package/alert_collision_NEAR.wav", subscriber, "sound3")
+    wait_for(world, 1)
+    if night:
+        play_sound("./sounds/voce_femminile/Rischio_di_collisione.wav", subscriber, "vocal3_night")
+    else:
+        play_sound("./sounds/voce_femminile/Rischio_di_collisione.wav", subscriber, "vocal3_day")
+    wait_for(world, 2)
+    client.set_vodafone_alert_image(SCREEN_OFF)
+
 
 
 def scenario6(client: "carla.Client",
@@ -305,8 +388,8 @@ def scenario6(client: "carla.Client",
               args,
               subscriber,
               night=False,
-              trigger_point=carla.Location(88, 181, 143),
-              spawn_point=carla.Location(350, 300, 128)):
+              trigger_point=carla.Location(100, 167, 143),
+              spawn_point=carla.Location(133, 149, 128)):
 
     while True:
         next_sun(world)
@@ -320,8 +403,10 @@ def scenario6(client: "carla.Client",
     start_spawn = min(spawn_points, key=lambda sp: sp.location.distance(spawn_point))
     if night:
         bp = [x for x in world.get_blueprint_library().filter("vehicle.carlamotors.firetruck")][0]
+        bp.set_attribute('role_name', 'fire_truck')
     else:
         bp = [x for x in world.get_blueprint_library().filter("vehicle.ford.ambulance")][0]
+        bp.set_attribute('role_name', 'ambulance')
 
     ambulance = world.try_spawn_actor(bp, start_spawn)
     ambulance.set_light_state(
@@ -332,13 +417,21 @@ def scenario6(client: "carla.Client",
         carla.VehicleLightState.LowBeam
     )
     )
+    move_ego(world, ambulance, spawn_point)
+    phy = ambulance.get_physics_control() 
+    phy.mass = 50
+    phy.torque_curve = [carla.Vector2D(x=0, y=1000), carla.Vector2D(10000, 1000)]
+    #phy.max_rpm = 10000
+    #phy.clutch_strenght = 100
+    ambulance.apply_physics_control(phy)
     tm = client.get_trafficmanager(8000)
-    tm.vehicle_percentage_speed_difference(ambulance, -40.0)
+    tm.vehicle_percentage_speed_difference(ambulance, -300.0)
     tm.distance_to_leading_vehicle(ambulance, 1.0)
     tm.ignore_lights_percentage(ambulance, 100.0)
     tm.ignore_signs_percentage(ambulance, 100.0)
     tm.auto_lane_change(ambulance, True)
     ambulance.set_autopilot(True)
+    tm.set_path(ambulance, [carla.Location(-158, 200, 128)])
 
     wait_for(world, 5)
 
@@ -347,10 +440,10 @@ def scenario6(client: "carla.Client",
     play_sound("./sounds/ADAS_Test_Package/alert_emergency_MID.wav", subscriber, "sound6")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/mezzo_emergenza_notte_1.wav", subscriber, "vocal6_night")
+        play_sound("./sounds/voce_femminile/Mezzo_emergenza.wav", subscriber, "vocal6_night")
     else:
-        play_sound("./sounds/day/Mezzo_emergenza_giorno_1.wav", subscriber, "vocal6_day")
-    wait_for(world, 1)
+        play_sound("./sounds/voce_femminile/Mezzo_emergenza.wav", subscriber, "vocal6_day")
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
 
 def scenario5(client: "carla.Client",
@@ -377,11 +470,11 @@ def scenario5(client: "carla.Client",
     play_sound("./sounds/ADAS_Test_Package/alert_incident_MID.wav", subscriber, "sound5")
     wait_for(world, 1)
     if day:
-        play_sound("./sounds/day/Incidente_giorno_3.wav", subscriber, "vocal5_day")
+        play_sound("./sounds/voce_femminile/Incidente.wav", subscriber, "vocal5_day")
     else:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Incidente_notte_4.wav", subscriber, "vocal5_night")
+        play_sound("./sounds/voce_femminile/Incidente.wav", subscriber, "vocal5_night")
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
-    wait_for(world, 1)
 
 
 
@@ -419,12 +512,13 @@ def scenario4(client: "carla.Client",
     play_sound("./sounds/ADAS_Test_Package/alert_traffic_MID.wav", subscriber, "sound4")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Traffico_intenso_notte_3.wav", subscriber, "vocal4_night")
+        play_sound("./sounds/voce_femminile/Traffico_intenso.wav", subscriber, "vocal4_night")
     else:
-        play_sound("./sounds/day/Traffico_intenso_giorno_1.wav", subscriber, "vocal4_day")
+        play_sound("./sounds/voce_femminile/Traffico_intenso.wav", subscriber, "vocal4_day")
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
 
-    wait_for(world, 4)
+    wait_for(world, 2)
     release_vehicle_queue_to_traffic_manager(client, queued_vehicles, args)
     return queued_vehicles
 
@@ -448,12 +542,12 @@ def scenario2(client: "carla.Client",
             play_sound("sounds/ADAS_Test_Package/alert_roadworks_MID.wav", subscriber, "sound2")
             wait_for(world, 1)
             if night:
-                play_sound("sounds/ALERT VOCALI NOTTE/Lavori_in_corso_notte_3.wav", subscriber, "vocal2_night")
+                play_sound("sounds/voce_femminile/Lavori_in_corso.wav", subscriber, "vocal2_night")
             else:
-                play_sound("sounds/day/Lavori_in_corso_giorno_1.wav", subscriber, "vocal2_day")
+                play_sound("sounds/voce_femminile/Lavori_in_corso.wav", subscriber, "vocal2_day")
             break
 
-    wait_for(world, 1.5)
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
 
 
@@ -511,9 +605,6 @@ def next_sun(world):
         weather = world.get_weather()
         weather.sun_altitude_angle = current_sun_value
         weather.sun_azimuth_angle = 60
-        weather.fog_density = 2
-        weather.fog_distance = 0.75
-        weather.fog_falloff = 0.1
         world.set_weather(weather)
         world_snapshot = world.wait_for_tick()
 
@@ -527,11 +618,11 @@ def scenario1(client: "carla.Client",
                      location=carla.Location(441, 214, 120),
                      target=carla.Location(441, 200, 120)):
     """Main loop: wait for ego within distance, then send walker to target."""
-    world.set_pedestrians_cross_factor(0)
+    #world.set_pedestrians_cross_factor(0)
     walker, controller = spawn_walker_with_controller(client, world, args, location)
     # trans = walker.get_transform()
     controller.set_max_speed(float(0))
-    trigger_distance = float(args.trigger_distance)
+    trigger_distance = float(args.trigger_distance) if not night else 80.0
     arrival_threshold = float(args.arrival_threshold)
 
     target_location = target
@@ -577,9 +668,9 @@ def scenario1(client: "carla.Client",
                          distance, trigger_distance)
 
             controller.start()
+            #world.set_pedestrians_cross_factor(1.0)
             controller.go_to_location(target_location)
             controller.set_max_speed(float(args.walker_speed))
-            world.set_pedestrians_cross_factor(1.0)
             triggered = True
 
     show_image(client,HUMAN_PERSENCE, subscriber, "HUMAN_PRESENCE")
@@ -588,11 +679,12 @@ def scenario1(client: "carla.Client",
     play_sound("./sounds/ADAS_Test_Package/alert_pedoni_NEAR(1).wav", subscriber, "sound1")
     wait_for(world, 1)
     if night:
-        play_sound("./sounds/ALERT VOCALI NOTTE/Attenzione_pedoni_notte1.wav", subscriber, "vocal0_night")
+        play_sound("./sounds/voce_femminile/Attraversamento_pedoni.wav", subscriber, "vocal0_night")
     else:
-        play_sound("./sounds/day/Attenzione_pedoni_giorno2.wav", subscriber, "vocal1_day")
+        play_sound("./sounds/voce_femminile/Attraversamento_pedoni.wav", subscriber, "vocal1_day")
+    wait_for(world, 2)
     client.set_vodafone_alert_image(SCREEN_OFF)
-    wait_for(world, 8)
+    wait_for(world, 6)
 
     cleanup(walker, controller)
 
@@ -644,7 +736,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    cortex_subscriber = sub_data.start()
+    cortex_subscriber = sub_data.start() if False else None
     time.sleep(2)
 
     logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -669,11 +761,9 @@ def main():
         if ego_vehicle is not None:
             logging.info("Found ego vehicle id=%d type=%s",
                             ego_vehicle.id, ego_vehicle.type_id)
+    #move_ego(world, ego_vehicle, carla.Location(133, 149, 128))
 
     # Scenario execution
-    light_manager = world.get_lightmanager()
-    for light in light_manager.get_all_lights():
-        light.turn_on()
     # tm = client.get_trafficmanager(8000)
     # traffic_manager = client.get_trafficmanager()
     # traffic_manager.set_global_vehicle_lights(carla.VehicleLightState.Position | carla.VehicleLightState.LowBeam)
@@ -684,6 +774,12 @@ def main():
     print(carla.WeatherParameters.ClearNight)
     print(carla.WeatherParameters.ClearNoon)
     world.set_weather(carla.WeatherParameters.ClearNoon)
+    #world.set_weather(carla.WeatherParameters.ClearNight)
+    #exit()
+    light_manager = world.get_lightmanager()
+    for light in light_manager.get_all_lights():
+        light.turn_on()
+        light.set_intensity(1000000)
     next_sun(world)
 
     scenario1(client, world, ego_vehicle, args, cortex_subscriber)
@@ -695,10 +791,12 @@ def main():
     scenario5(client, world, ego_vehicle, args, cortex_subscriber)
     for vehichle in spawned:
         vehichle.destroy()
-    target_sun_value = 15
+    target_sun_value = 14
     scenario6(client, world, ego_vehicle, args, cortex_subscriber)
     target_sun_value = 10
     scenario7(client, world, ego_vehicle, args, cortex_subscriber)
+    scenario3(client, world, ego_vehicle, args, cortex_subscriber)
+    target_sun_value = -2
 
     #cortex_subscriber.stop_record()
     #cortex_subscriber.join()
@@ -706,18 +804,40 @@ def main():
 
     scenario5(client, world, ego_vehicle, args, cortex_subscriber, False, carla.Location(-302, 81, 149))
 
-    scenario1(client, world, ego_vehicle, args, cortex_subscriber, True, carla.Location(-41, -60, 126), carla.Location(-43, -73, 126))
+    weather = world.get_weather()
+    weather.precipitation = 100.0
+    weather.precipitation_deposits = 50.0
+    weather.fog_density = 50
+    weather.fog_distance = 0.75
+    weather.fog_falloff = 0.1
+    world.set_weather(weather) 
+    scenario1(client, world, ego_vehicle, args, cortex_subscriber, True, carla.Location(-90, -56, 130), carla.Location(-11, -101, 130))
 
+    weather = world.get_weather()
+    weather.precipitation = 0  
+    weather.precipitation_deposits = 0 
+    weather.fog_density = 0
+    weather.fog_distance = 0.75
+    weather.fog_falloff = 0.1
+    world.set_weather(weather) 
     scenario7(client, world, ego_vehicle, args, cortex_subscriber, True, carla.Location(-26, -226, 127) )
 
     scenario2(client, world, ego_vehicle, args, cortex_subscriber, True, carla.Location(-266, -441, 138) )
 
     spawned = scenario4(client, world, ego_vehicle, args, cortex_subscriber, True, queue_location=carla.Location(105, -480, 153), location=carla.Location(31, -541, 158))
+    weather = world.get_weather()
+    weather.precipitation = 100.0
+    weather.precipitation_deposits = 50.0
+    weather.fog_density = 50
+    weather.fog_distance = 0.75
+    weather.fog_falloff = 0.1
+    world.set_weather(weather) 
+    scenario3(client, world, ego_vehicle, args, cortex_subscriber, True, spawn_point=carla.Location(628, -18, 135), trigger_point=carla.Location(605, -56, 136))
 
-    scenario6(client, world, ego_vehicle, args, cortex_subscriber, True, trigger_point=carla.Location(714, 39, 134), spawn_point=carla.Location(676, 5.4, 135))
+    scenario6(client, world, ego_vehicle, args, cortex_subscriber, True, trigger_point=carla.Location(857, 164, 134), spawn_point=carla.Location(747, 69, 135))
 
-    cortex_subscriber.stop_record()
-    cortex_subscriber.join()
+    #cortex_subscriber.stop_record()
+    #cortex_subscriber.join()
 
 
 if __name__ == "__main__":

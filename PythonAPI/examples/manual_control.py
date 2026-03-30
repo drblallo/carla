@@ -87,11 +87,13 @@ from carla import ColorConverter as cc
 import argparse
 import collections
 import datetime
+import time
 import logging
 import math
 import random
 import re
 import weakref
+import car_sound
 
 try:
     import pygame
@@ -249,7 +251,8 @@ class World(object):
         blueprint_list = get_actor_blueprints(self.world, self._actor_filter, self._actor_generation)
         if not blueprint_list:
             raise ValueError("Couldn't find any blueprints with the specified filters")
-        blueprint = blueprint_list[2]
+        blueprint = random.choice(blueprint_list) #added [PA]
+        #blueprint = blueprint_list[0]
         blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('terramechanics'):
             blueprint.set_attribute('terramechanics', 'true')
@@ -282,15 +285,16 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            spawn_point = spawn_points[self.spawn_index] if spawn_points else carla.Transform()
+            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform() #added [PA]
+            #spawn_point = spawn_points[self.spawn_index] if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             self.show_vehicle_telemetry = False
             self.modify_vehicle_physics(self.player)
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
-        self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
-        self.gnss_sensor = GnssSensor(self.player)
-        self.imu_sensor = IMUSensor(self.player)
+        #self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
+        #self.gnss_sensor = GnssSensor(self.player)
+        #self.imu_sensor = IMUSensor(self.player)
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
@@ -358,9 +362,10 @@ class World(object):
         sensors = [
             self.camera_manager.sensor,
             self.collision_sensor.sensor,
-            self.lane_invasion_sensor.sensor,
-            self.gnss_sensor.sensor,
-            self.imu_sensor.sensor]
+            #self.lane_invasion_sensor.sensor,
+            #self.gnss_sensor.sensor,
+            #self.imu_sensor.sensor
+            ]
         for sensor in sensors:
             if sensor is not None:
                 sensor.stop()
@@ -703,11 +708,11 @@ class HUD(object):
         t = world.player.get_transform()
         v = world.player.get_velocity()
         c = world.player.get_control()
-        compass = world.imu_sensor.compass
-        heading = 'N' if compass > 270.5 or compass < 89.5 else ''
-        heading += 'S' if 90.5 < compass < 269.5 else ''
-        heading += 'E' if 0.5 < compass < 179.5 else ''
-        heading += 'W' if 180.5 < compass < 359.5 else ''
+        #compass = world.imu_sensor.compass
+        #heading = 'N' if compass > 270.5 or compass < 89.5 else ''
+        #heading += 'S' if 90.5 < compass < 269.5 else ''
+        #heading += 'E' if 0.5 < compass < 179.5 else ''
+        #heading += 'W' if 180.5 < compass < 359.5 else ''
         colhist = world.collision_sensor.get_collision_history()
         collision = [colhist[x + self.frame - 200] for x in range(0, 200)]
         max_col = max(1.0, max(collision))
@@ -722,11 +727,11 @@ class HUD(object):
             'Simulation time: % 12s' % datetime.timedelta(seconds=int(self.simulation_time)),
             '',
             'Speed:   % 15.0f km/h' % (3.6 * math.sqrt(v.x**2 + v.y**2 + v.z**2)),
-            u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
-            'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
-            'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),
+            #u'Compass:% 17.0f\N{DEGREE SIGN} % 2s' % (compass, heading),
+            #'Accelero: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.accelerometer),
+            #'Gyroscop: (%5.1f,%5.1f,%5.1f)' % (world.imu_sensor.gyroscope),
             'Location:% 20s' % ('(% 5.1f, % 5.1f, % 5.1f)' % (t.location.x, t.location.y, t.location.z)),
-            'GNSS:% 24s' % ('(% 2.6f, % 3.6f)' % (world.gnss_sensor.lat, world.gnss_sensor.lon)),
+            #'GNSS:% 24s' % ('(% 2.6f, % 3.6f)' % (world.gnss_sensor.lat, world.gnss_sensor.lon)),
             'Height:  % 18.0f m' % t.location.z,
             '']
         if isinstance(c, carla.VehicleControl):
@@ -914,6 +919,7 @@ class CollisionSensor(object):
         self.history.append((event.frame, intensity))
         if len(self.history) > 4000:
             self.history.pop(0)
+
 
 
 # ==============================================================================
@@ -1118,30 +1124,30 @@ class CameraManager(object):
         self.transform_index = 1
         self.sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB', {}],
-            ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)', {}],
-            ['sensor.camera.depth', cc.Depth, 'Camera Depth (Gray Scale)', {}],
-            ['sensor.camera.depth', cc.LogarithmicDepth, 'Camera Depth (Logarithmic Gray Scale)', {}],
-            ['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)', {}],
-            ['sensor.camera.semantic_segmentation', cc.CityScapesPalette, 'Camera Semantic Segmentation (CityScapes Palette)', {}],
-            ['sensor.camera.instance_segmentation', cc.CityScapesPalette, 'Camera Instance Segmentation (CityScapes Palette)', {}],
-            ['sensor.camera.instance_segmentation', cc.Raw, 'Camera Instance Segmentation (Raw)', {}],
-            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)', {'range': '50'}],
-            ['sensor.camera.dvs', cc.Raw, 'Dynamic Vision Sensor', {}],
-            ['sensor.camera.rgb', cc.Raw, 'Camera RGB Distorted',
-                {'lens_circle_multiplier': '3.0',
-                'lens_circle_falloff': '3.0',
-                'chromatic_aberration_intensity': '0.5',
-                'chromatic_aberration_offset': '0'}],
-            ['sensor.camera.optical_flow', cc.Raw, 'Optical Flow', {}],
-            ['sensor.camera.normals', cc.Raw, 'Camera Normals', {}],
+            #['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)', {}],
+            #['sensor.camera.depth', cc.Depth, 'Camera Depth (Gray Scale)', {}],
+            #['sensor.camera.depth', cc.LogarithmicDepth, 'Camera Depth (Logarithmic Gray Scale)', {}],
+            #['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)', {}],
+            #['sensor.camera.semantic_segmentation', cc.CityScapesPalette, 'Camera Semantic Segmentation (CityScapes Palette)', {}],
+            #['sensor.camera.instance_segmentation', cc.CityScapesPalette, 'Camera Instance Segmentation (CityScapes Palette)', {}],
+            #['sensor.camera.instance_segmentation', cc.Raw, 'Camera Instance Segmentation (Raw)', {}],
+            #['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)', {'range': '50'}],
+            #['sensor.camera.dvs', cc.Raw, 'Dynamic Vision Sensor', {}],
+            #['sensor.camera.rgb', cc.Raw, 'Camera RGB Distorted',
+            #    {'lens_circle_multiplier': '3.0',
+            #    'lens_circle_falloff': '3.0',
+            #    'chromatic_aberration_intensity': '0.5',
+            #    'chromatic_aberration_offset': '0'}],
+            #['sensor.camera.optical_flow', cc.Raw, 'Optical Flow', {}],
+            #['sensor.camera.normals', cc.Raw, 'Camera Normals', {}],
         ]
         world = self._parent.get_world()
         bp_library = world.get_blueprint_library()
         for item in self.sensors:
             bp = bp_library.find(item[0])
             if item[0].startswith('sensor.camera'):
-                bp.set_attribute('image_size_x', str(hud.dim[0]))
-                bp.set_attribute('image_size_y', str(hud.dim[1]))
+                bp.set_attribute('image_size_x', str(hud.dim[0] ))
+                bp.set_attribute('image_size_y', str(hud.dim[1] ))
                 if bp.has_attribute('gamma'):
                     bp.set_attribute('gamma', str(gamma_correction))
                 for attr_name, attr_value in item[3].items():
@@ -1240,6 +1246,7 @@ class CameraManager(object):
         self.hud.notification('Recording %s' % ('On' if self.recording else 'Off'))
 
     def render(self, display):
+        #scaled = pygame.transform.scale(self.surface, (self.surface.get_width()*2, self.surface.get_height()*2))
         if self.surface is not None:
             display.blit(self.surface, (0, 0))
 
@@ -1329,7 +1336,7 @@ def game_loop(args):
         world = World(sim_world, hud, args)
         controller = KeyboardControl(world, args.autopilot)
 
-        engine_sound = EngineSound(world)
+        engine_sound = car_sound.EngineSound(world)
 
         if args.sync:
             sim_world.tick()
@@ -1340,10 +1347,14 @@ def game_loop(args):
         while True:
             if args.sync:
                 sim_world.tick()
-            clock.tick_busy_loop(60)
+            else:
+                sim_world.wait_for_tick()
+            #clock.tick_busy_loop(60)
+            
             if controller.parse_events(client, world, clock, args.sync):
                 return
-            world.tick(clock)
+            #if args.sync:
+            #    sim_world.tick()
             engine_sound.update(clock.get_time() / 1000.0)
             world.render(display)
             pygame.display.flip()
@@ -1440,114 +1451,6 @@ def main():
 
     except KeyboardInterrupt:
         print('\nCancelled by user. Bye!')
-
-#### VODAFONE STUFF
-class EngineSound(object):
-    """
-    Simple engine sound controller.
-
-    - Loads ./car_sound.mp3
-    - Plays it in a loop
-    - Updates volume each frame based on vehicle throttle + speed
-    - Smooths volume changes so it doesn't jump when pressing/releasing keys
-    """
-    def __init__(self, world):
-        self.world = world
-        self.sound = None
-        self.channel = None
-        self.enabled = False
-
-        # Smoothed state
-        self.current_volume = 0.0
-        self.smoothed_throttle = 0.0
-
-        # Resolve path to car_sound.mp3 in same directory as this script
-        try:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        except NameError:
-            # __file__ may not exist in some environments; fallback to CWD
-            base_dir = os.getcwd()
-        sound_path = os.path.join(base_dir, "car_sound.mp3")
-
-        try:
-            self.sound = pygame.mixer.Sound(sound_path)
-            # Global sound volume (max), per-frame volume is set on the channel
-            self.sound.set_volume(1.0)
-            # Play in loop
-            self.channel = self.sound.play(loops=-1)
-            self.enabled = True
-            print(f"[EngineSound] Loaded engine sound from {sound_path}")
-        except Exception as e:
-            print(f"[EngineSound] Could not load engine sound: {e}")
-            self.enabled = False
-
-        # Used for crude accel estimate from speed (if you want it later)
-        self._last_speed = 0.0
-
-    def _clamp(self, v, vmin, vmax):
-        return max(vmin, min(vmax, v))
-
-    def update(self, dt):
-        """
-        Call once per frame.
-        dt: frame time in seconds (use clock.get_time() / 1000.0)
-        """
-        if not self.enabled or self.channel is None:
-            return
-        if self.world.player is None:
-            return
-
-        # --- Get vehicle state ---
-        v = self.world.player.get_velocity()
-        speed = math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2)  # m/s
-
-        try:
-            control = self.world.player.get_control()
-        except RuntimeError:
-            # Player might be destroyed during restart
-            return
-
-        raw_throttle = getattr(control, "throttle", 0.0)
-
-        # Normalize speed (assume ~40 m/s ≈ 144 km/h as "max")
-        max_speed = 40.0
-        speed_norm = self._clamp(speed / max_speed, 0.0, 1.0)
-
-        # Optional: crude longitudinal accel estimate from speed difference
-        if dt > 0:
-            accel = (speed - self._last_speed) / dt
-        else:
-            accel = 0.0
-        self._last_speed = speed
-        # accel is currently *not* used in volume to avoid spikes,
-        # but you can add a small boost if you want.
-
-        # --- Smooth the throttle so it doesn't jump 0 -> 1 instantly ---
-        throttle_smooth_time = 0.1  # seconds
-        if dt > 0:
-            alpha_t = 1.0 - math.exp(-dt / throttle_smooth_time)
-        else:
-            alpha_t = 1.0
-        self.smoothed_throttle += (raw_throttle - self.smoothed_throttle) * alpha_t
-        self.smoothed_throttle = self._clamp(self.smoothed_throttle, 0.0, 1.0)
-
-        # --- Compute target volume (no sudden jumps here) ---
-        base_idle = 0.2  # always some engine hum
-        target_volume = base_idle + self.smoothed_throttle * 0.6 + speed_norm * 0.2
-        target_volume = self._clamp(target_volume, 0.0, 1.0)
-
-        # --- Smooth the volume towards target_volume ---
-        smooth_time = 0.15  # seconds (~150ms fade)
-        if dt > 0:
-            alpha = 1.0 - math.exp(-dt / smooth_time)
-        else:
-            alpha = 1.0
-
-        self.current_volume += (target_volume - self.current_volume) * alpha
-        self.current_volume = self._clamp(self.current_volume, 0.0, 1.0)
-
-        # Apply final volume to the playing channel
-        self.channel.set_volume(self.current_volume)
 
 
 

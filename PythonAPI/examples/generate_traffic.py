@@ -14,7 +14,7 @@ import os
 import sys
 import time
 import wrapper as rlc_scripts
-from carla_step_manager import CarlaStepClient
+#from carla_step_manager import CarlaStepClient
 # from carla_to_step import create_logger, create_sync_com_manager, vehicle_to_message
 
 class WalkerWrapper:
@@ -455,7 +455,7 @@ def main():
                 world.tick()
             else:
                 world.wait_for_tick()
-                main_walker.tick()
+                #main_walker.tick()
 
     finally:
 

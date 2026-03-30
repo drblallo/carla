@@ -23,6 +23,8 @@ from trajectory_recorder import TrajectoryRecorder, RecordingMode
 from collision_detector import CollisionDetector, CollisionMethod
 from carla_step_manager import CarlaStepClient
 
+from step_cloud_schemas import CauseCode, Termination
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class SimulationConfig:
     distance_to_leading_vehicle: float = 2.5
 
 
-@dataclass
+@dataclass 
 class VehicleConfig:
     """Vehicle spawning configuration"""
     number: int = 20
@@ -59,6 +61,7 @@ class VehicleConfig:
     car_lights_on: bool = False
     hero: bool = False
     speed_variance: float = 1.0
+    ambulance: bool = False
 
 
 @dataclass
@@ -99,7 +102,7 @@ class V2XConfig:
     """V2X communication configuration"""
     enabled: bool = True
     frequency: int = 10
-    log_file: str = "00_v2x_carla_traffic.log"
+    log_file: str = "00_v2x_carla_traffic.log" 
     station_id: int = 123
 
 
@@ -123,7 +126,7 @@ class CarlaConfig:
 
 class WalkerWrapper:
     """Wrapper class for walker control"""
-
+    
     def __init__(self, world, walker, walker_ai):
         self.world = world
         self.walker = walker
@@ -161,7 +164,7 @@ def load_config(config_file: str) -> CarlaConfig:
     try:
         with open(config_file, 'r') as f:
             config_dict = yaml.safe_load(f)
-
+        
         # Convert nested dictionaries to dataclass instances
         config = CarlaConfig(
             simulation=SimulationConfig(**config_dict.get('simulation', {})),
@@ -172,10 +175,10 @@ def load_config(config_file: str) -> CarlaConfig:
             v2x=V2XConfig(**config_dict.get('v2x', {})),
             performance=PerformanceConfig(**config_dict.get('performance', {}))
         )
-
+        
         logger.info(f"Configuration loaded from {config_file}")
         return config
-
+        
     except FileNotFoundError:
         logger.warning(f"Config file {config_file} not found. Using default configuration.")
         return CarlaConfig()
@@ -183,8 +186,7 @@ def load_config(config_file: str) -> CarlaConfig:
         logger.error(f"Error parsing YAML config: {e}. Using default configuration.")
         return CarlaConfig()
 
-
-def get_actor_blueprints(world, filter_pattern: str, generation: str):
+def get_actor_blueprints(world, filter_pattern: str, generation: str, ambulance: bool = False):
     """Get actor blueprints based on filter and generation"""
     bps = world.get_blueprint_library().filter(filter_pattern)
 
@@ -198,6 +200,42 @@ def get_actor_blueprints(world, filter_pattern: str, generation: str):
         int_generation = int(generation)
         if int_generation in [1, 2, 3]:
             bps = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+            #logger.info(f"VEHICLES: {bps}")
+            return bps
+        else:
+            return []
+    except:
+        return []
+
+def get_actor_blueprints_vehicles_old(world, filter_pattern: str, generation: str, ambulance: bool = False):
+    """Get actor blueprints based on filter and generation"""
+    bps = world.get_blueprint_library().filter(filter_pattern)
+
+    #logger.info(f"VEHICLES: {bps}")
+
+    filtered = []
+
+    if ambulance:
+        ambulance_bp = world.get_blueprint_library().find("vehicle.ford.ambulance")
+        if ambulance_bp is not None:
+            filtered = [bp for bp in filtered if bp.id != "vehicle.ford.ambulance"]
+            filtered.insert(0, ambulance_bp)
+
+    bps = filtered
+    
+    #logger.info(f"VEHICLES FILTERED: {filtered}")
+    
+    if generation.lower() == "all":
+        return bps
+
+    if len(bps) == 1:
+        return bps
+
+    try:
+        int_generation = int(generation)
+        if int_generation in [1, 2, 3]:
+            bps = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+            #logger.info(f"VEHICLES: {bps}")
             return bps
         else:
             return []
@@ -205,21 +243,136 @@ def get_actor_blueprints(world, filter_pattern: str, generation: str):
         return []
 
 
+def get_actor_blueprints_vehicles(world, filter_pattern: str, generation: str, ambulance: bool = False):
+    bps = world.get_blueprint_library().filter(filter_pattern)
+    #logger.info(f"****************VEHICLES FILTERED 1: {len(list(bps))} blueprints")
+
+    if generation.lower() == "all":
+        filtered = list(bps)
+    elif len(bps) == 1:
+        filtered = list(bps)
+    else:
+        try:
+            int_generation = int(generation)
+            if int_generation in [1, 2, 3]:
+                filtered = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+            else:
+                filtered = []
+        except:
+            filtered = []
+
+    #logger.info(f"****************VEHICLES FILTERED 4: {len(filtered)} blueprints")
+
+    if ambulance:
+        ambulance_bp = world.get_blueprint_library().find("vehicle.ford.ambulance")
+        if ambulance_bp is not None:
+            filtered = [bp for bp in filtered if bp.id != "vehicle.ford.ambulance"]
+            filtered.insert(0, ambulance_bp)
+            #logger.info(f"****************VEHICLES FILTERED 5 (ambulance first): {filtered[0].id}")
+        else:
+            logger.warning("vehicle.ford.ambulance NON trovato nella blueprint library!")
+
+    return filtered
+
+
+def get_actor_blueprints_vehicles_001(world, filter_pattern: str, generation: str, ambulance: bool = False):
+    """Get actor blueprints based on filter and generation.
+    
+    If ambulance=True, vehicle.ford.ambulance is prepended as first blueprint.
+    """
+    bps = world.get_blueprint_library().filter(filter_pattern)
+
+    #logger.info(f"****************VEHICLES FILTERED 1: {bps}")
+
+    if generation.lower() == "all":
+        filtered = list(bps)
+    elif len(bps) == 1:
+        filtered = list(bps)
+    else:
+        try:
+            #logger.info(f"****************VEHICLES FILTERED 2: {filtered}")
+            int_generation = int(generation)
+            if int_generation in [1, 2, 3]:
+                filtered = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+                #logger.info(f"****************VEHICLES FILTERED 3: {filtered}")
+            else:
+                filtered = []
+        except:
+            filtered = []
+
+    #logger.info(f"****************VEHICLES FILTERED 4: {filtered}")
+
+    if ambulance:
+        ambulance_bp = world.get_blueprint_library().find("vehicle.ford.ambulance")
+        if ambulance_bp is not None:
+            filtered = [bp for bp in filtered if bp.id != "vehicle.ford.ambulance"]
+            filtered.insert(0, ambulance_bp)
+            #logger.info(f"****************VEHICLES FILTERED 5: {filtered}")
+
+    return filtered
+
+
+def get_actor_blueprints_vehicles_old(world, filter_pattern: str, generation: str, ambulance: bool = False):
+    bps = world.get_blueprint_library().filter(filter_pattern)
+
+    if generation.lower() == "all":
+        filtered = list(bps)
+    elif len(bps) == 1:
+        filtered = list(bps)
+    else:
+        try:
+            int_generation = int(generation)
+            if int_generation in [1, 2, 3]:
+                filtered = [x for x in bps if int(x.get_attribute('generation')) == int_generation]
+            else:
+                filtered = []
+        except:
+            filtered = []
+
+    if ambulance:
+        ambulance_bp = world.get_blueprint_library().find("vehicle.ford.ambulance")
+        if ambulance_bp is not None:
+            filtered = [bp for bp in filtered if bp.id != "vehicle.ford.ambulance"]
+            filtered.insert(0, ambulance_bp)
+    
+    #logger.info(f"VEHICLES: {filtered}")
+    
+    return filtered
+
+
+
 def compute_actor_heading(actor) -> float:
     """
     Compute WGS84 heading from CARLA actor.
-
+    
     Converts CARLA's yaw (0° = East) to WGS84 heading (0° = North) in degrees.
     Returns heading in range 0.0-360.0 degrees.
-
+    
     Args:
         actor: CARLA actor (vehicle or walker)
-
+        
     Returns:
         float: WGS84 heading in degrees
     """
+    #carla_yaw = actor.get_transform().rotation.yaw
+
+    #heading_from_vel = math.degrees(math.atan2(vel.x, -vel.y)) % 360
+
+    # ── Velocità ─────────────────────────────────────────────────────
+    vel = actor.get_velocity()          # carla.Vector3D [m/s]
+    speed_ms  = math.sqrt(vel.x**2 + vel.y**2 + vel.z**2)
     carla_yaw = actor.get_transform().rotation.yaw
-    return (90.0 - carla_yaw) % 360.0
+    # ── Heading da yaw (sempre disponibile, anche da fermo) ──────────
+    heading_deg = (-carla_yaw) % 360      # → bearing geografico 0-360
+
+    # ── Heading da vettore velocità (più preciso in movimento) ───────
+    if speed_ms:
+        heading_from_vel = math.degrees(math.atan2(vel.x, -vel.y)) % 360
+    else:
+        heading_from_vel = heading_deg    # fallback al yaw se fermo
+    
+    return heading_from_vel
+    #return (90.0 - carla_yaw) % 360.0
 
 
 def send_vehicle_cam(v2x_client: CarlaStepClient, vehicle_actor):
@@ -240,7 +393,8 @@ def send_vehicle_cam(v2x_client: CarlaStepClient, vehicle_actor):
             heading=heading,
             id=vehicle_actor.id
         )
-
+        logger.info(f"vehicle_actor.id: {vehicle_actor.id} geo_loc.latitude: {geo_loc.latitude} geo_loc.longitude: {geo_loc.longitude} heading: {heading} speed: {speed}")
+        
     except Exception as e:
         logger.error(f"Error sending vehicle CAM for actor {vehicle_actor.id}: {e}")
 
@@ -248,14 +402,14 @@ def send_vehicle_cam(v2x_client: CarlaStepClient, vehicle_actor):
 def send_walker_cam(v2x_client: CarlaStepClient, walker_actor):
     """Send CAM message for a walker (pedestrian)"""
     try:
-        # Get GPS coordinates
+        # Get GPS coordinates  
         geo_loc = walker_actor.get_geolocation()
-
+        
         velocity = walker_actor.get_velocity()
         speed = math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
 
         heading = compute_actor_heading(walker_actor)
-
+        
         v2x_client.send_message(
             latitude=geo_loc.latitude,
             longitude=geo_loc.longitude,
@@ -263,22 +417,69 @@ def send_walker_cam(v2x_client: CarlaStepClient, walker_actor):
             heading=heading,
             id=walker_actor.id
         )
-
+        
     except Exception as e:
         logger.error(f"Error sending walker CAM for actor {walker_actor.id}: {e}")
+
+def send_denm_for_ambulance(v2x_client, vehicle: carla.Vehicle):
+    try:
+        lat = vehicle.get_geolocation().latitude
+        lon = vehicle.get_geolocation().longitude
+
+        vel = vehicle.get_velocity()
+        speed_ms = (vel.x**2 + vel.y**2 + vel.z**2) ** 0.5
+
+        yaw = vehicle.get_transform().rotation.yaw
+        heading_deg = (90.0 - yaw) % 360.0
+
+        v2x_client.send_denm_message(
+            latitude=lat,
+            longitude=lon,
+            speed=speed_ms,
+            heading=heading_deg,
+            station_id=vehicle.id,
+            cause_code=CauseCode.EMERGENCY_VEHICLE, #EMERGENCY_VEHICLE_APPROACHING,
+            time_to_collision=None,
+            estimated_braking_distance=None,
+            termination=None,
+            validity_duration=10,
+            sequence_number=1
+        )
+    except Exception as e:
+        logger.error(f"Error sending DENM message: {e}")
+
+
+def send_denm(v2x_client: CarlaStepClient, latitude, longitude, station_id, simulation_time):
+    """Send DENM message for a collition"""
+    try:
+
+        v2x_client.send_denm_message(
+            latitude=latitude,
+            longitude=longitude,
+            station_id=station_id,
+            speed=100,
+            heading=200,
+            cause_code=None,
+            time_to_collision=1500,           # ms
+            estimated_braking_distance=800,   # cm
+        )
+        
+    except Exception as e:
+        logger.error(f"Error sending DENM message: {e}")
 
 
 def save_combined_data(trajectory_recorder, collision_detector, filename: str) -> Dict[str, Any]:
     """Save both trajectory and collision data to a pickle file"""
-
+    
     logger.info(f"Saving combined data to {filename}")
-
+    
     # Get clean trajectory data
     clean_vehicles, clean_walkers = trajectory_recorder.clean_trajectories()
-
+    
     # Base datetime: July 21, 2025 at 00:00:00
-    base_datetime = datetime.datetime(2025, 7, 21, 0, 0, 0)
-
+    #base_datetime = datetime.datetime(2025, 7, 21, 0, 0, 0)
+    base_datetime = datetime.datetime.now()
+    
     # Process vehicle trajectories to add proper timestamps
     processed_vehicles = {}
     for vehicle_id, trajectory in clean_vehicles.items():
@@ -286,21 +487,21 @@ def save_combined_data(trajectory_recorder, collision_detector, filename: str) -
         for state in trajectory:
             # Create new state dict with modified timestamps
             new_state = state.copy()
-
+            
             # Rename original timestamp to elapsed_time
             new_state['elapsed_time'] = state['timestamp']
-
+            
             # Create new timestamp with datetime from base + elapsed_time (precision 0.01s)
             elapsed_seconds = round(state['timestamp'], 2)  # 0.01s precision
             new_state['timestamp'] = base_datetime + datetime.timedelta(seconds=elapsed_seconds)
-
+            
             # Create timestamp_real using real_time
             real_seconds = round(state['real_time'], 2)  # 0.01s precision
             new_state['timestamp_real'] = base_datetime + datetime.timedelta(seconds=real_seconds)
-
+            
             processed_trajectory.append(new_state)
         processed_vehicles[vehicle_id] = processed_trajectory
-
+    
     # Process walker trajectories to add proper timestamps
     processed_walkers = {}
     for walker_id, trajectory in clean_walkers.items():
@@ -308,25 +509,25 @@ def save_combined_data(trajectory_recorder, collision_detector, filename: str) -
         for state in trajectory:
             # Create new state dict with modified timestamps
             new_state = state.copy()
-
+            
             # Rename original timestamp to elapsed_time
             new_state['elapsed_time'] = state['timestamp']
-
+            
             # Create new timestamp with datetime from base + elapsed_time (precision 0.01s)
             elapsed_seconds = round(state['timestamp'], 2)  # 0.01s precision
             new_state['timestamp'] = base_datetime + datetime.timedelta(seconds=elapsed_seconds)
-
+            
             # Create timestamp_real using real_time
             real_seconds = round(state['real_time'], 2)  # 0.01s precision
             new_state['timestamp_real'] = base_datetime + datetime.timedelta(seconds=real_seconds)
-
+            
             processed_trajectory.append(new_state)
         processed_walkers[walker_id] = processed_trajectory
-
+    
     # Get collision statistics and events
     collision_stats = collision_detector.get_collision_statistics() if collision_detector else {}
     collision_events = collision_detector.collision_events if collision_detector else []
-
+    
     # Process collision events to add proper timestamps
     processed_collision_events = []
     for event in collision_events:
@@ -334,18 +535,18 @@ def save_combined_data(trajectory_recorder, collision_detector, filename: str) -
         if 'timestamp' in event:
             # Rename original timestamp to elapsed_time
             new_event['elapsed_time'] = event['timestamp']
-
+            
             # Create new timestamp with datetime from base + elapsed_time
             elapsed_seconds = round(event['timestamp'], 2)  # 0.01s precision
             new_event['timestamp'] = base_datetime + datetime.timedelta(seconds=elapsed_seconds)
-
+            
             # If there's a real_time field, create timestamp_real
             if 'real_time' in event:
                 real_seconds = round(event['real_time'], 2)
                 new_event['timestamp_real'] = base_datetime + datetime.timedelta(seconds=real_seconds)
-
+        
         processed_collision_events.append(new_event)
-
+    
     # Combine all data
     combined_data = {
         'trajectories': {
@@ -377,34 +578,37 @@ def save_combined_data(trajectory_recorder, collision_detector, filename: str) -
             }
         }
     }
-
+    
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(os.path.abspath(filename)) if os.path.dirname(filename) else '.', exist_ok=True)
-
+    
     # Save to pickle file
     with open(filename, 'wb') as f:
         pickle.dump(combined_data, f)
-
+    
     logger.info(f"Data saved successfully: {len(processed_vehicles)} vehicles, {len(processed_walkers)} walkers, {len(processed_collision_events)} collision events")
-
+    
     return combined_data
 
 
 def setup_world_settings(world, config: CarlaConfig, synchronous_master: bool = False):
     """Configure CARLA world settings based on configuration"""
     settings = world.get_settings()
-
+    
+    
     if not config.simulation.asynch:
-        if not settings.synchronous_mode:
+        if  settings.synchronous_mode:
             synchronous_master = True
             settings.synchronous_mode = True
             settings.fixed_delta_seconds = 1.0 / config.simulation.simulation_fps
         else:
             synchronous_master = False
-
+    
+    
     if config.simulation.no_rendering:
         settings.no_rendering_mode = True
-
+    
+       
     world.apply_settings(settings)
     logger.debug(f"World settings applied: sync={settings.synchronous_mode}, no_render={config.simulation.no_rendering}")
     return synchronous_master
@@ -414,7 +618,7 @@ def setup_traffic_manager(client, config: CarlaConfig):
     """Setup and configure traffic manager"""
     traffic_manager = client.get_trafficmanager(config.simulation.tm_port)
     traffic_manager.set_global_distance_to_leading_vehicle(config.simulation.distance_to_leading_vehicle)
-
+    
     if config.simulation.respawn:
         traffic_manager.set_respawn_dormant_vehicles(True)
     if config.simulation.hybrid:
@@ -422,7 +626,7 @@ def setup_traffic_manager(client, config: CarlaConfig):
         traffic_manager.set_hybrid_physics_radius(70.0)
     if config.simulation.seed is not None:
         traffic_manager.set_random_device_seed(config.simulation.seed)
-
+        
     logger.debug(f"Traffic manager configured on port {config.simulation.tm_port}")
     return traffic_manager
 
@@ -431,7 +635,7 @@ def initialize_recorders(world, config: CarlaConfig, settings):
     """Initialize trajectory recorder and collision detector"""
     trajectory_recorder = None
     collision_detector = None
-
+    
     # Initialize trajectory recorder
     if config.trajectory_recording.enabled:
         trajectory_recorder = TrajectoryRecorder(
@@ -457,7 +661,7 @@ def initialize_recorders(world, config: CarlaConfig, settings):
             actor_cache_interval=config.performance.actor_cache_interval
         )
         logger.info(f"Collision detector initialized with method: {config.collision_detection.method}")
-
+        
     return trajectory_recorder, collision_detector
 
 
@@ -467,7 +671,7 @@ def print_performance_stats(frame_count: int, tempi_steps: List[float]):
         tempo_medio = sum(tempi_steps) / len(tempi_steps)
         tempo_min = min(tempi_steps)
         tempo_max = max(tempi_steps)
-
+        
         logger.info(f"Performance Statistics:")
         logger.info(f"  Iterations: {frame_count}")
         logger.info(f"  Average step time: {tempo_medio:.6f} ms")
@@ -475,13 +679,13 @@ def print_performance_stats(frame_count: int, tempi_steps: List[float]):
         logger.info(f"  Max time: {tempo_max:.6f} ms")
 
 
-def cleanup_simulation(world, config: CarlaConfig, synchronous_master: bool,
+def cleanup_simulation(world, config: CarlaConfig, synchronous_master: bool, 
                       vehicles_list: List[int], all_id: List[int],
                       trajectory_recorder=None, collision_detector=None):
     """Clean up simulation resources"""
-
+    
     logger.info("Starting cleanup process")
-
+    
     # Cleanup recorders
     if collision_detector:
         collision_detector.cleanup()
@@ -489,7 +693,7 @@ def cleanup_simulation(world, config: CarlaConfig, synchronous_master: bool,
     if trajectory_recorder:
         trajectory_recorder.cleanup()
         logger.debug("Trajectory recorder cleaned up")
-
+    
     # Restore world settings
     if not config.simulation.asynch and synchronous_master:
         settings = world.get_settings()
@@ -510,10 +714,118 @@ def cleanup_simulation(world, config: CarlaConfig, synchronous_master: bool,
     time.sleep(0.5)
     logger.info("Cleanup complete")
 
+# Spawna sempre gli stessi veicoli nelle stesse posiizoni
+def spawn_vehicles_det(world, client, config: CarlaConfig, traffic_manager, collision_detector=None, seed=None):
+    """Spawn vehicles DETERMINISTICI - STESSO SEED = STESSI VEICOLI/POSIZIONI"""
+    logger.info(f"Spawning {config.vehicles.number} vehicles (seed={seed})")
+    
+    import random as pyrandom
+    pyrandom.seed(seed)  # Python random!
+    numpy.random.seed(seed)  # Se usato dentro
+
+    # ✅ SEED FISSO per TUTTO deterministico
+    if seed is not None:
+        random.seed(seed)
+        import numpy as np
+        np.random.seed(seed)
+    
+    # Blueprint ordinati per ID (STESSA SEQUENZA SEMPRE)
+    blueprints = get_actor_blueprints_vehicles(world, config.vehicles.filter, config.vehicles.generation, config.vehicles.ambulance)
+    #logger.info(f"blueprints[0]: {blueprints[0].id}]")
+    if not blueprints:
+        raise ValueError("No vehicle blueprints found")
+
+    ambulance_bp = blueprints[0] if config.vehicles.ambulance else None
+    blueprints_rest = blueprints[1:] if ambulance_bp else blueprints
+
+    if config.vehicles.safe_mode:
+        blueprints_rest = [x for x in blueprints_rest if x.get_attribute('base_type') == 'car']
+
+    blueprints_sorted = sorted(blueprints_rest, key=lambda bp: bp.id)  # ✅ ORDINE FISSO!
+    blueprints[1:] = blueprints_sorted
+    #logger.info(f"ambulance_bp {ambulance_bp.id}]")
+
+    # Spawn points ORDINATI per coordinate X,Y (STESSA POSIZIONE SEMPRE)
+    spawn_points = sorted(world.get_map().get_spawn_points(),
+                         key=lambda sp: (sp.location.x, sp.location.y, sp.location.z),reverse = False)
+    
+    number_of_spawn_points = len(spawn_points)
+    if config.vehicles.number > number_of_spawn_points:
+        logger.warning(f"Limited to {number_of_spawn_points} vehicles")
+        config.vehicles.number = number_of_spawn_points
+    
+    # ✅ PRIMI N spawn points ORDINATI (NO shuffle!)
+    spawn_points = spawn_points[:config.vehicles.number]
+    
+    SpawnActor = carla.command.SpawnActor
+    SetAutopilot = carla.command.SetAutopilot
+    FutureActor = carla.command.FutureActor
+    
+    batch = []
+    hero = config.vehicles.hero
+    
+    for n, transform in enumerate(spawn_points):
+        # ✅ blueprint[n % len] = STESSO VEICOLO per posizione n!
+        
+        blueprint_idx = n % len(blueprints)
+        blueprint = blueprints[blueprint_idx]
+        #logger.info(f"Vehicle {n}: {blueprint.id} @ spawn[{n}]")
+
+        # ✅ COLOR DETERMINISTICO (hash blueprint ID + seed)
+        if blueprint.has_attribute('color'):
+            color_list = blueprint.get_attribute('color').recommended_values
+            # Hash fisso: blueprint ID + seed → STESSO COLORE SEMPRE
+            color_hash = (hash(blueprint.id) + seed if seed else 0) % len(color_list)
+            color = color_list[color_hash]
+            blueprint.set_attribute('color', color)
+        
+        # ✅ Driver ID PRIMO della lista (non random)
+        if blueprint.has_attribute('driver_id'):
+            driver_id = blueprint.get_attribute('driver_id').recommended_values[0]
+            blueprint.set_attribute('driver_id', driver_id)
+        
+        # Hero SEMPRE sul PRIMO spawn point
+        if hero and n == 0:
+            blueprint.set_attribute('role_name', 'hero')
+            hero = False
+        else:
+            blueprint.set_attribute('role_name', 'autopilot')
+        
+        logger.debug(f"Vehicle {n}: {blueprint.id} @ spawn[{n}] color={color}")
+        
+        batch.append(SpawnActor(blueprint, transform)
+                    .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
+    
+    vehicles_list = []
+    for response in client.apply_batch_sync(batch, True):
+        if response.error:
+            logger.warning(f"Vehicle spawn error: {response.error}")
+        else:
+            vehicles_list.append(response.actor_id)
+    
+    logger.info(f"Successfully spawned {len(vehicles_list)} vehicles")
+    
+    # ✅ VELOCITÀ FISSA (non random!)
+    if collision_detector:
+        all_vehicle_actors = world.get_actors(vehicles_list)
+        for i, actor in enumerate(all_vehicle_actors):
+            try:
+                if actor.is_alive:
+                    collision_detector.add_collision_sensor(actor)
+                    # VELOCITÀ 0% Varianza = TUTTI UGUALI!
+                    traffic_manager.vehicle_percentage_speed_difference(actor, 0.0)
+            except Exception as e:
+                logger.debug(f"Failed sensor {actor.id}: {e}")
+    
+    return vehicles_list
+
+
+
+
 def spawn_vehicles(world, client, config: CarlaConfig, traffic_manager, collision_detector=None):
     """Spawn vehicles in the simulation"""
     logger.info(f"Spawning {config.vehicles.number} vehicles")
-
+    
     blueprints = get_actor_blueprints(world, config.vehicles.filter, config.vehicles.generation)
     if not blueprints:
         logger.error("Couldn't find any vehicles with the specified filters")
@@ -595,7 +907,7 @@ def spawn_vehicles(world, client, config: CarlaConfig, traffic_manager, collisio
 def spawn_walkers(world, client, config: CarlaConfig, collision_detector=None):
     """Spawn walkers (pedestrians) in the simulation"""
     logger.info(f"Spawning {config.walkers.number} walkers")
-
+    
     blueprintsWalkers = get_actor_blueprints(world, config.walkers.filter, config.walkers.generation)
     if not blueprintsWalkers:
         logger.error("Couldn't find any walkers with the specified filters")
@@ -652,7 +964,7 @@ def spawn_walkers(world, client, config: CarlaConfig, collision_detector=None):
     walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
     for i in range(len(walkers_list)):
         batch.append(carla.command.SpawnActor(walker_controller_bp, carla.Transform(), walkers_list[i]["id"]))
-
+    
     results = client.apply_batch_sync(batch, True)
     all_id = []
     for i in range(len(results)):

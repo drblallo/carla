@@ -20,7 +20,9 @@ The module provides example implementations for:
     - Proper connection handling and cleanup
     - Logging with UTC timestamps
 """
-
+import uuid
+import time
+import socket
 # Standard Library Imports
 from logging import Logger, getLogger, FileHandler, Formatter
 
@@ -45,7 +47,7 @@ from step_cloud_schemas import (
     Identification,
     ItsTime,
     LocationContainer,
-    ManagementContainer,
+    ManagementContainerDenm,
     MessageId,
     ObjectDimension,
     ObjectFace,
@@ -76,6 +78,8 @@ from step_lib import (
     SyncComManagerParams,
 )
 
+from typing import List, Dict, Any, Optional
+
 
 def sync_com_manager_create(
     logger: Logger, station_id: Optional[int] 
@@ -103,6 +107,9 @@ def sync_com_manager_create(
         The function uses predefined MQTT broker credentials and TLS parameters.
         It's configured to publish CAM and DENM PDUs on specific topics with geohashing.
     """
+    hostname = socket.gethostname()[:6]
+    unique_suffix = uuid.uuid4().hex[:8]
+    instance_name = f"carla-{hostname}-{unique_suffix}-{station_id}"
     tls_params = TLSParameters(
         ca_certs=None,
         certfile=None,
@@ -113,7 +120,7 @@ def sync_com_manager_create(
         keyfile_password=None,
     )
     params = SyncComManagerParams(
-        instance_name="step_lib_carla",
+        instance_name=instance_name, #"step_lib_carla",
         host="de-he-mn.mqtt.step.vodafone.com",
         port=8883,
         username="73f4f844-15c9-427b-8787-592b3c675d1d",
@@ -131,7 +138,7 @@ def sync_com_manager_create(
         max_concurrent_outgoing_calls=60,
         tls_context=None,
         tls_params=tls_params,
-        tls_insecure=False,
+        #tls_insecure=False,
         proxy=None,
         socket_options=None,
         session_expiry=0,
@@ -146,12 +153,12 @@ def sync_com_manager_create(
                 qos=MqttQoS.QOS_0, # 0 non aspetto acknowledge, 1 lo aspetto
             ),
             # Non mandiamo DENM
-#            PublishTopicParams(
-#                message_type=MessageId.DENM_PDU,
-#               header_topic="v2x/denm/264421_4",
-#                geohash_precision=8,
-#                qos=0,
-#            ),
+            PublishTopicParams(
+                message_type=MessageId.DENM_PDU,
+                header_topic="v2x/denm/264421_4",
+                geohash_precision=8,
+                qos=MqttQoS.QOS_0,
+            ),
         ],
         cache_dir="./.cache",
         logger=logger,
@@ -326,8 +333,7 @@ def create_cam_orm_message(current_position: GpsLocation, station_id: int = 1111
         ),
     )
 
-
-def create_denm_orm_message() -> DenmMessageV1:
+def create_denm_orm_message_static() -> DenmMessageV1:  # rinominata: usare create_denm_message()
     """
     Creates a DENMv1 (Decentralized Environmental Notification Message) ORM message.
 
@@ -355,7 +361,7 @@ def create_denm_orm_message() -> DenmMessageV1:
     return DenmMessageV1(
         message=DenmDataV1(
             stationId=971391625,
-            managementContainer=ManagementContainer(
+            managementContainer=ManagementContainerDenm(
                 actionId=ActionId(originatingStationId=971391625, sequenceNumber=1),
                 detectionTime="2024-12-20T17:31:38.725Z",
                 referenceTime="2024-12-20T17:31:38.729Z",
@@ -414,6 +420,118 @@ def create_denm_orm_message() -> DenmMessageV1:
     )
 
 
+
+def create_denm_message(
+    station_id: int,
+    lat: float,
+    lon: float,
+    heading: float = 0.0,
+    speed_ms: float = 0.0,
+    cause_code=None,
+    time_to_collision: Optional[int] = None,
+    estimated_braking_distance: Optional[int] = None,
+    termination=None,
+    validity_duration: int = 60,
+    sequence_number: int = 1,
+) -> DenmMessageV1:
+    """
+    Crea un DENM parametrizzato conforme ETSI EN 302 637-3.
+
+    Args:
+        station_id:                  ID stazione originante (vehicle ID CARLA)
+        lat / lon:                   Posizione evento (WGS84)
+        heading:                     Heading in gradi 0-360
+        speed_ms:                    Velocita in m/s (convertita internamente in cm/s)
+        cause_code:                  CauseCode ETSI (default: SLOW_VEHICLE)
+        time_to_collision:           TTC in ms; None → preCrashContainer omesso
+        estimated_braking_distance:  Distanza frenata in cm; None → N/A
+        termination:                 Termination.CANCELLATION per cancellare un evento
+        validity_duration:           Durata validita in secondi (default 60)
+        sequence_number:             Numero sequenza ActionId (incrementare per update)
+
+    Returns:
+        DenmMessageV1 pronto per publish_its_message()
+    """
+    if cause_code is None:
+        cause_code = CauseCode.SLOW_VEHICLE
+    now_str = str(ItsTime())
+    speed_val = int(speed_ms * 100)     # m/s → cm/s  (STEP convention)
+    heading_val = int(heading * 10)     # deg → 0.1deg (STEP convention)
+
+    pre_crash = None
+    if time_to_collision is not None:
+        pre_crash = PreCrashContainer(
+            perceivedObject=PerceivedObject(
+                objectId=None,
+                measurementDeltaTime=2,
+                position=ReferencePosition(
+                    latitude=lat,
+                    longitude=lon,
+                    positionConfidence=PositionConfidenceEllipse(
+                        semiMajorAxisLengthConfidence=500,
+                        semiMinorAxisLengthConfidence=500,
+                        semiMajorAxisOrientation=0,
+                    ),
+                    altitude=Altitude(value=0, confidence=None),
+                ),
+                speed=Speed(value=speed_val, confidence=2),
+                heading=Heading(value=heading_val, confidence=2),
+                objectDimensionZ=ObjectDimension(value=100, confidence=2),
+                objectDimensionY=ObjectDimension(value=10, confidence=2),
+                objectDimensionX=ObjectDimension(value=200, confidence=2),
+                objectPerceptionQuality=3,
+            ),
+            stationIdInvolved=station_id,
+            timeToCollision=time_to_collision,
+            impactSection=ObjectFace.SIDE_LEFT_FRONT,
+            estimatedBrakingDistance=estimated_braking_distance,
+            estimatedCollisionLatitude=lat,      # ← richiesto da pydantic
+            estimatedCollisionLongitude=lon,     # ← richiesto da pydantic
+        )
+
+    return DenmMessageV1(
+        message=DenmDataV1(
+            stationId=station_id,
+            managementContainer=ManagementContainerDenm(
+                actionId=ActionId(
+                    originatingStationId=station_id,
+                    sequenceNumber=sequence_number,
+                ),
+                detectionTime=now_str,
+                referenceTime=now_str,
+                termination=termination,
+                eventPosition=ReferencePosition(
+                    latitude=lat,
+                    longitude=lon,
+                    positionConfidence=PositionConfidenceEllipse(
+                        semiMajorAxisLengthConfidence=500,
+                        semiMinorAxisLengthConfidence=500,
+                        semiMajorAxisOrientation=0,
+                    ),
+                    altitude=Altitude(value=0, confidence=None),
+                ),
+                awarenessDistance=199,
+                trafficDirection=TrafficDirection.ALL_TRAFFIC_DIR,
+                validityDuration=validity_duration,
+                transmissionInterval=1000,
+                stationType=TrafficParticipantType.PASSENGER_CAR,
+                referenceStationId=station_id,
+                referenceObjectId=0,
+            ),
+            situationContainer=SituationContainer(
+                informationQuality=None,
+                eventType=cause_code,
+            ),
+            locationContainer=LocationContainer(
+                eventSpeed=Speed(value=speed_val, confidence=50),
+                eventPositionHeading=Heading(value=heading_val, confidence=50),
+                roadType=RoadType.URBAN_NO_STRUCT_SEP_TO_OPPOSITE_LANES,
+            ),
+            preCrashContainer=pre_crash,
+        )
+    )
+
+
 def sync_test_publish_with_context_manager(logger: Logger) -> None:
     """
     Test the publishing functionality using a context manager.
@@ -447,10 +565,10 @@ def sync_test_publish_with_context_manager(logger: Logger) -> None:
         client.subscribe(
             topics=[
                 "v2x/cam/264421_4/g8/+/+/+/+/#",
-                #"v2x/denm/264421_4/g8/+/+/+/+/#",
+                "v2x/denm/264421_4/g8/+/+/+/+/#",
             ],
             max_qos=MqttQoS.QOS_1,
-            no_local=True,
+            no_local=False, #True,
         )
         # CAM message as JSON
         client.publish_its_message(
@@ -475,7 +593,7 @@ def sync_test_publish_with_context_manager(logger: Logger) -> None:
         )
         # DENM message as ORM
         client.publish_its_message(
-            message=create_denm_orm_message(),
+            message=create_denm_message(),
             address=address,
             current_position=current_position,
             is_station_mobile=True,
@@ -532,10 +650,10 @@ def sync_test_publish_without_context_manager(logger: Logger) -> None:
         # Subscribe to the topics
         client.subscribe(
             topics=["v2x/cam/264421_4/g8/+/+/+/+/#", 
-                    #"v2x/denm/264421_4/g8/+/+/+/+/#"
+                    "v2x/denm/264421_4/g8/+/+/+/+/#"
                     ],
             max_qos=MqttQoS.QOS_1,
-            no_local=True,
+            no_local=False, #True,
         )
         # CAM message as JSON
         client.publish_its_message(
@@ -560,7 +678,7 @@ def sync_test_publish_without_context_manager(logger: Logger) -> None:
         )
         # DENM message as ORM
         client.publish_its_message(
-            message=create_denm_orm_message(),
+            message=create_denm_message(),
             address=address,
             current_position=current_position,
             is_station_mobile=True,
@@ -638,7 +756,7 @@ def sync_test_publish_with_context_manager_filter_station_id(logger: Logger) -> 
         client.subscribe(
             topics=[
                 "v2x/cam/264421_4/g8/+/+/+/+/#",
-                #"v2x/denm/264421_4/g8/+/+/+/+/#",
+                "v2x/denm/264421_4/g8/+/+/+/+/#",
             ],
             max_qos=MqttQoS.QOS_1,
             no_local=False,
@@ -666,7 +784,7 @@ def sync_test_publish_with_context_manager_filter_station_id(logger: Logger) -> 
         )
         # DENM message as ORM
         client.publish_its_message(
-            message=create_denm_orm_message(),
+            message=create_denm_message(),
             address=address,
             current_position=current_position,
             is_station_mobile=True,
@@ -678,11 +796,32 @@ def sync_test_publish_with_context_manager_filter_station_id(logger: Logger) -> 
             logger.info(msg=f"Message received: {message}")
     logger.info(msg=f"Client status: {client.connection_status}")
 
+
+
+import uuid
+import time
+
+
+        
+
+
+
+
 class CarlaStepClient:
-    def __init__(self, log_file="step_publish.log"):
+#    def __init__(self, log_file="step_publish.log"):
+    def __init__(self, log_file="step_publish.log", station_id=None):
+
         logger = getLogger(name=__name__)
         logger.setLevel(level=logging.DEBUG) #[PA]
         #logger.setLevel(level=logging.INFO)
+       # ✅ GENERA CLIENT ID UNIVOCO
+        if station_id is None:
+            station_id = int(time.time() * 1000) % 1000000
+        
+        unique_client_id = f"carla-v2x-{uuid.uuid4().hex[:8]}-{station_id}"
+        print(f"✅ Client ID univoco: {unique_client_id}")
+
+
         channel = FileHandler(
             filename=log_file,
             mode="w",
@@ -700,18 +839,341 @@ class CarlaStepClient:
         logger.addHandler(hdlr=channel)
         logger.propagate = False # Add by a.solinas, to not print on terminal step manager loggings during sim
         #self.client = sync_com_manager_create(logger=logger, station_id=station_id)  [PA]
-        self.client = sync_com_manager_create(logger=logger,station_id=None)
+        self.client = sync_com_manager_create(logger=logger,station_id=station_id)
         self.client.start()
         self.logger = logger
         time_sleep(1)
         self.client.subscribe(
             topics=[
                 "v2x/cam/264421_4/g8/+/+/+/+/#",
-                #"v2x/denm/264421_4/g8/+/+/+/+/#",
+                "v2x/denm/264421_4/g8/+/+/+/+/#",
             ],
             max_qos=MqttQoS.QOS_0,
-            no_local=True,                     #no echo, altrimenti False
+            no_local=False,                     #no echo, altrimenti False
         )
+
+
+
+    def test_publish_cam(self, lat=45.4642, lon=9.1900, speed=12.0, station_id=999999):
+        """TEST CAM - FIXED Speed int (cm/s)."""
+        current_pos = GpsLocation(
+            time=ItsTime(), 
+            latitude=lat, 
+            longitude=lon, 
+            accuracy=1, 
+            speed=int(speed * 100),  # 🔥 12.0 m/s → 1200 cm/s (INT!)
+            heading=int(0 * 10)      # 0.0° → 0 (int, decimi di grado)
+        )
+        
+        address = GeoNetworkAddress(
+            is_manual_configured=True,
+            traffic_participant_type=TrafficParticipantType.PASSENGER_CAR,
+            mac_id=station_id
+        )
+        
+        message = create_cam_orm_message(current_pos, station_id, TrafficParticipantType.PASSENGER_CAR)
+        
+        self.client.publish_its_message(
+            message=message,
+            address=address,
+            current_position=current_pos,
+            is_station_mobile=True
+        )
+        print(f"🔥 INVIO TEST CAM da {station_id}: ({lat:.6f}, {lon:.6f}), speed={speed} m/s")
+        print(f"   📤 Pubblicato su: v2x/cam/264421_4/g8/{station_id}/...")
+
+
+
+
+    def get_cam_messages(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae CAM da STEP. ✅ CORRETTA col tuo DEBUG."""
+        cams = []
+        
+        print(f"CAM Estrae e parsifica CAM da STEP (MQTT). Ritorna lista dict.")
+
+        # FIXED: generator → list
+        #messages = list(self.client.its_messages_received)
+        
+
+        # 🔥 DEBUG: Verifica STEP
+        print(f"🔍 DEBUG - itsmessagesreceived type: {type(self.client.its_messages_received)}")
+        print(f"🔍 DEBUG - itsmessagesreceived len: {len(list(self.client.its_messages_received))}")
+        #print(f"🔍 DEBUG - itsmessagesreceived len: {len(self.client.its_messages_received)}")
+        print(f"🔍 DEBUG - client status: {self.client.connection_status}")
+        print(f"🔍 DEBUG - subscribed topics: {getattr(self.client, '_subscribe_topics', 'N/A')}")
+        
+        # Process received messages
+        for message in self.client.its_messages_received:
+            print(f"Received message: {message}")
+
+
+        messages = list(self.client.its_messages_received)
+        print(f"🔍 DEBUG - messages dopo list(): {len(messages)} elementi")
+        
+        if len(messages) == 0:
+            print("❌ NESSUN MESSAGGIO RICEVUTO - controlla:")
+            print("  1. STEP connesso a MQTT?")
+            print("  2. Qualcuno pubblica su v2x/cam/* ?")
+            print("  3. Topics corretti? (v2xcam2644214#g8)")
+            return []
+    
+
+
+
+
+        for msg in messages[:]:  # Copia per remove sicuro
+            print(f"DEBUG msg: {type(msg)}, msg.message: {type(msg.message) if hasattr(msg, 'message') else 'NOPE'}")
+            print(f"DEBUG attrs: {dir(msg.message) if hasattr(msg, 'message') else 'N/A'}")
+            try:
+                # Dal DEBUG: msg = CamMessageV1, msg.message = CamDataV1
+                if hasattr(msg, 'message') and isinstance(msg.message, CamDataV1):
+                    cam = msg.message  # ← CamDataV1 (NON cam_data!)
+                    
+                    cams.append({
+                        'station_id': cam.stationInfo.station_id,           # ✅ stationInfo
+                        'lat': cam.position.latitude,                       # ✅ position.latitude
+                        'lon': cam.position.longitude,
+                        'speed': cam.speed.value if cam.speed else 0,       # ✅ speed.value
+                        'heading': cam.heading.value if cam.heading else 0,  # ✅ heading.value
+                        'timestamp': str(cam.creationTime),                 # ✅ creationTime
+                        'drive_dir': cam.driveDirection.value if cam.driveDirection else 'unknown',
+                        'accel_long': cam.longitudinalAcceleration.value if cam.longitudinalAcceleration else 0,
+                        'curvature': cam.curvature.value if cam.curvature else 0,
+                        'yaw_rate': cam.yawRate.value if cam.yawRate else 0,
+                        'raw': msg  # Messaggio STEP completo
+                    })
+                    
+                    # LOG visibile
+                    self.logger.info(f"CAM da {cam.stationInfo.station_id}: "
+                                f"({cam.position.latitude:.6f}, {cam.position.longitude:.6f}), "
+                                f"speed={cam.speed.value if cam.speed else 0:.1f}")
+                    print(f"*** CAM [{len(cams)}] da {cam.stationInfo.station_id}: "
+                        f"({cam.position.latitude:.6f}, {cam.position.longitude:.6f}), "
+                        f"speed={cam.speed.value if cam.speed else 0:.1f} m/s")
+                    
+                    if clear_after:
+                        # Rimuovi dalla coda originale
+                        try:
+                            self.client.itsmessagesreceived.remove(msg)
+                        except ValueError:
+                            pass  # Già rimosso
+                            
+            except Exception as e:
+                self.logger.warning(f"Errore parsing CAM {msg}: {e}")
+                continue
+        
+        self.logger.info(f"Trovati {len(cams)} CAM messages")
+        return cams
+
+
+
+
+
+
+    def get_cam_messages1(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae e parsifica CAM da STEP (MQTT). Ritorna lista dict."""
+        cams = []
+
+        print(f"CAM Estrae e parsifica CAM da STEP (MQTT). Ritorna lista dict.")
+        
+        #messages = self.client.its_messages_received
+        messages = list(self.client.its_messages_received)
+ 
+
+
+
+
+        for msg in messages[:]:  # Copia per modificare
+            print(f"DEBUG msg: {type(msg)}, msg.message: {type(msg.message) if hasattr(msg, 'message') else 'NOPE'}")
+            print(f"DEBUG attrs: {dir(msg.message) if hasattr(msg, 'message') else 'N/A'}")
+            if hasattr(msg.message, 'CamDataV1'):
+                print(f"cam_data OK: {dir(msg.message.CamDataV1)}")
+
+            if hasattr(msg.message, 'CamDataV1'):  # È un CAM
+                cam = msg.message.CamDataV1
+                cams.append({
+                    'station_id': cam.station_info.station_id,
+                    'lat': cam.position.latitude,
+                    'lon': cam.position.longitude,
+                    'speed': cam.speed.value if cam.speed else 0,
+                    'heading': cam.heading.value if cam.heading else 0,
+                    'timestamp': str(cam.creation_time),
+                    'raw': msg  # Messaggio STEP completo
+                })
+                self.logger.info(f"CAM da {cam.station_info.station_id}: ({cam.position.latitude:.6f}, {cam.position.longitude:.6f})")
+                print(f"*********************************************************************************************************************************************************CAM da {cam.station_info.station_id}: ({cam.position.latitude:.6f}, {cam.position.longitude:.6f})")
+                if clear_after:
+                    messages.remove(msg)
+        return cams  
+
+    def get_messages(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae e parsifica DENM da STEP. Ritorna lista eventi."""
+        message = None
+        cam = None
+
+        for message in self.client.its_messages_received:
+            self.logger.info("Message received Pietro: %s", message)
+            print(f"get_messagesget_messagesget_messagesget_messages*********************************************************************************************************************************************************)")
+            if not hasattr(message.message, 'CamDataV1'):
+                print(f"cam_data OK: {dir(message.message)}")
+                print(f"cam_data OK: {dir(message.message)}")
+        return message  
+#-> List[Dict[str, Any]]:
+
+
+    def get_cam_messages_list1(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae CAM da STEP. Ritorna LISTA DICT."""
+        cams = []  # ← LISTA, non singolo event!
+        
+        messages = list(self.client.its_messages_received)
+
+
+        for msg in messages:
+            try:
+                if hasattr(msg, 'message') and hasattr(msg.message, 'creationTime'):
+                    cam = msg.message  # Oggetto CamDataV1
+                    
+                    event = {  # ← DICT singolo
+                        'type': 'CAM',
+                        'station_id': cam.stationInfo.stationId,
+                        'station_type': str(cam.stationInfo.stationType),
+                        'lat': cam.position.latitude,
+                        'lon': cam.position.longitude,
+                        'altitude': cam.position.altitude.value if cam.position.altitude else 0,
+                        'heading': cam.heading.value if cam.heading else 0,
+                        'speed_ms': cam.speed.value / 100 if cam.speed else 0,
+                        'drive_dir': str(cam.driveDirection) if cam.driveDirection else '',
+                        'vehicle_length': cam.vehicleLength.vehicleLengthValue,
+                        'vehicle_width': cam.vehicleWidth,
+                        'timestamp': str(cam.creationTime),
+                        'raw': str(msg)
+                    }
+                    
+                    cams.append(event)  # ← AGGIUNGI alla lista!
+                    #print(f"[CAM] ID={event['station_id']} @ {event['lat']:.6f},{event['lon']:.6f}")
+                
+                if clear_after:
+                    self.client.its_messages_received.remove(msg)
+            
+            except Exception as e:
+                self.logger.warning(f"Parse error: {e}")
+        
+        return cams  # ← RITORNA LISTA!
+
+
+
+    def get_cam_messages(self, clear_after: bool = True) -> Dict[str, Any]: 
+        message = self.client.its_messages_received
+        cam = None
+        event = [str, Any]
+        
+        print(f"DEBUG - itsmessagesreceived len: {(message)}")
+        
+        for msg in message:
+            self.logger.info("Message received: %s", msg)
+            
+            try:
+                # Parsing CAM dal tuo log
+                if hasattr(msg, 'message') and hasattr(msg.message, 'creationTime'):
+                    cam = msg.message  # Direttamente su msg.message
+                    event = {
+                        'type': 'CAM',
+                        'station_id': cam.stationInfo.stationId,  # 255
+                        'station_type': str(cam.stationInfo.stationType),  # 'passengerCar'
+                        'lat': cam.position.latitude,  # 41.5007684
+                        'lon': cam.position.longitude,  # 2.0908633
+                        'altitude': cam.position.altitude.value if cam.position.altitude else 0,
+                        'heading': cam.heading.value if cam.heading else 0,  # 65 (0.1°)
+                        'speed_ms': cam.speed.value / 100 if cam.speed else 0,  # 794 → 7.94 m/s (STEP: cm/s!)
+                        'drive_dir': str(cam.driveDirection),
+                        'vehicle_length': cam.vehicleLength.vehicleLengthValue,  # 30 (0.1m)
+                        'vehicle_width': cam.vehicleWidth,  # 10 (0.1m)
+                        'timestamp': str(cam.creationTime),  # 2026-02-12T15:26:33.516Z
+                        'raw': str(msg)
+                    }
+                    
+                    print(f"[CAM PARSED: ID={event['station_id']} @ {event['lat']:.6f},{event['lon']:.6f} speed={event['speed_ms']:.2f}m/s")
+                
+                if clear_after:
+                    self.client.its_messages_received.remove(msg)
+            
+            except Exception as e:
+                self.logger.warning("Parse error: %s", e)
+        
+        return event
+
+    def get_cam_messages1(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae CAM → **DICT** (non oggetti STEP)."""
+        cams = []  # Lista DICT
+        messages_list = list(self.client.its_messages_received)
+        
+        for msg in messages_list[:]:
+            try:
+                # 🔥 STEP msg → DICT esplicito
+                if hasattr(msg, 'message') and hasattr(msg.message, 'creationTime'):
+                    cam_obj = msg.message  # <class 'type'>
+                    
+                    cam_dict = {  # ← CONVERTE in dict!
+                        'type': 'CAM',
+                        'station_id': cam_obj.stationInfo.stationId,
+                        'station_type': str(cam_obj.stationInfo.stationType),
+                        'lat': float(cam_obj.position.latitude),
+                        'lon': float(cam_obj.position.longitude),
+                        'altitude': cam_obj.position.altitude.value if cam_obj.position.altitude else 0,
+                        'heading': cam_obj.heading.value if cam_obj.heading else 0,
+                        'speed_ms': cam_obj.speed.value / 100.0 if cam_obj.speed else 0.0,
+                        'drive_dir': str(cam_obj.driveDirection) if cam_obj.driveDirection else '',
+                        'vehicle_length': cam_obj.vehicleLength.vehicleLengthValue / 10.0,
+                        'vehicle_width': cam_obj.vehicleWidth / 10.0 if cam_obj.vehicleWidth else 0,
+                        'timestamp': str(cam_obj.creationTime),
+                        '_raw_obj': cam_obj  # Oggetto originale per debug
+                    }
+                    cams.append(cam_dict)  # ✅ DICT!
+                    
+                    print(f"[PARSE OK] ID={cam_dict['station_id']} → dict!")
+                
+                if clear_after:
+                    self.client.its_messages_received.remove(msg)
+                    
+            except Exception as e:
+                self.logger.warning("Parse fail %s: %s", msg, e)
+        
+        return cams  # Lista dict ✅
+
+
+    def get_denm_messages(self, clear_after: bool = True) -> List[Dict[str, Any]]:
+        """Estrae e parsifica DENM da STEP. Ritorna lista eventi."""
+        denms = []
+
+        #messages = self.client.its_messages_received
+        messages = list(self.client.its_messages_received)
+
+        for msg in messages[:]:
+            if hasattr(msg.message, 'denm_data'):  # È un DENM
+                denm = msg.message.denm_data
+                denms.append({
+                    'station_id': denm.station_id,
+                    'event_type': denm.situation_container.event_type.value if denm.situation_container else 'unknown',
+                    'lat': denm.management_container.event_position.latitude,
+                    'lon': denm.management_container.event_position.longitude,
+                    'severity': denm.situation_container.information_quality.value if denm.situation_container else None,
+                    'timestamp': str(denm.management_container.detection_time),
+                    'raw': msg
+                })
+                self.logger.info(f"DENM: {denm.situation_container.event_type.value if denm.situation_container else 'N/A'} da {denm.station_id}")
+                if clear_after:
+                    messages.remove(msg)
+        return denms  
+
+    def get_all_received(self, clear: bool = False) -> Dict[str, List]:
+        """Ritorna TUTTI i CAM/DENM ricevuti (senza cancellare se clear=False)."""
+        return {
+            'cams': self.get_cam_messages(clear=False),
+            'denms': self.get_denm_messages(clear=False),
+            'total': len(self.client.its_messages_received)
+        }
+
+
 
     def send_message(self, latitude: float, longitude: float, speed: float, heading: float, id: int):
         current_position = GpsLocation(
@@ -734,6 +1196,102 @@ class CarlaStepClient:
             current_position=current_position,
             is_station_mobile=True,
         )
+
+
+
+    def send_denm_message(
+        self,
+        latitude: float,
+        longitude: float,
+        speed: float,
+        heading: float,
+        station_id: int,
+        cause_code=None,
+        time_to_collision: Optional[int] = None,
+        estimated_braking_distance: Optional[int] = None,
+        termination=None,
+        validity_duration: int = 60,
+        sequence_number: int = 1,
+    ) -> None:
+        """
+        Invia un messaggio DENM ETSI tramite STEP/MQTT.
+
+        Args:
+            latitude / longitude:        Posizione evento (WGS84)
+            speed:                       Velocita in m/s
+            heading:                     Heading in gradi 0-360
+            station_id:                  ID stazione CARLA del veicolo
+            cause_code:                  CauseCode ETSI (default: SLOW_VEHICLE)
+            time_to_collision:           TTC in ms (None → preCrashContainer omesso)
+            estimated_braking_distance:  Distanza frenata in cm
+            termination:                 Termination.CANCELLATION per cancellare evento
+            validity_duration:           Durata validita in secondi
+            sequence_number:             Numero sequenza (incrementare per update)
+
+        Example::
+
+            # Evento collisione imminente
+            client.send_denm_message(
+                latitude=45.4642, longitude=9.1900,
+                speed=8.5, heading=90.0,
+                station_id=1001,
+                cause_code=CauseCode.COLLISION_RISK,
+                time_to_collision=1500,
+                estimated_braking_distance=800,
+            )
+            # Cancella evento precedente
+            client.send_denm_message(
+                latitude=45.4642, longitude=9.1900,
+                speed=0.0, heading=0.0,
+                station_id=1001,
+                termination=Termination.CANCELLATION,
+                sequence_number=2,
+            )
+        """
+        current_position = GpsLocation(
+            time=ItsTime(),
+            latitude=round(latitude, 7),
+            longitude=round(longitude, 7),
+            accuracy=1,
+            speed=int(speed * 100),
+            heading=int(heading * 10),
+        )
+        address = GeoNetworkAddress(
+            is_manual_configured=True,
+            traffic_participant_type=TrafficParticipantType.PASSENGER_CAR,
+            mac_id=station_id,
+        )
+        message = create_denm_message(
+            station_id=station_id,
+            lat=latitude,
+            lon=longitude,
+            heading=heading,
+            speed_ms=speed,
+            cause_code=cause_code,
+            time_to_collision=time_to_collision,
+            estimated_braking_distance=estimated_braking_distance,
+            termination=termination,
+            validity_duration=validity_duration,
+            sequence_number=sequence_number,
+        )
+        self.client.publish_its_message(
+            message=message,
+            address=address,
+            current_position=current_position,
+            is_station_mobile=True,
+        )
+        self.logger.info(
+            "DENM inviato — station=%s pos=(%.6f,%.6f) cause=%s ttc=%s term=%s",
+            station_id, latitude, longitude, cause_code, time_to_collision, termination,
+        )
+        print(
+            f"📡 DENM inviato da {station_id}: ({latitude:.6f}, {longitude:.6f}) "
+            f"cause={cause_code} ttc={time_to_collision}ms seq={sequence_number}"
+        )
+
+
+
+
 
     def get_received(self):
         return self.client.its_messages_received

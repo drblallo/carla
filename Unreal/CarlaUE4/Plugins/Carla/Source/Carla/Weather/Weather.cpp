@@ -26,6 +26,7 @@ AWeather::AWeather(const FObjectInitializer& ObjectInitializer)
 
 void AWeather::CheckWeatherPostProcessEffects()
 {
+	return;
     if (Weather.Precipitation > 0.0f)
         ActiveBlendables.Add(MakeTuple(PrecipitationPostProcessMaterial, Weather.Precipitation / 100.0f));
     else
