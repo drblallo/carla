@@ -258,10 +258,10 @@ class DualControl(object):
         self.candidates = [carla.Location(549, 498, 0), carla.Location(318, 439, 0),  carla.Location(83, 185, 0),  carla.Location(-187, 143, 0),  carla.Location(-129, -42, 0),  carla.Location(2.8, -116, 0),  carla.Location(-271, -431, 0), carla.Location(-32, -597, 0), carla.Location(541, -106, 0)]
 
     def parse_events(self, world, clock):
-    
+
         pos = world.player.get_location()
         pos.z = 0
-        for i in range(len(self.candidates)): 
+        for i in range(len(self.candidates)):
             if pos.distance(self.candidates[i]) < 10:
                 self.respawn_points.append(self.candidates[i])
                 del self.candidates[i]
@@ -824,7 +824,29 @@ class CameraManager(object):
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
+def extract_frame_info(world):
+    snapshot = world.world.get_snapshot()
+    control = world.player.get_control()
+    velocity = world.player.get_velocity()
 
+    # velocità scalare
+    speed_m_s = math.sqrt(velocity.x**2 + velocity.y**2 + velocity.z**2)
+
+    # richiesta utente: km/s
+    speed_km_s = speed_m_s / 1000.0
+
+    # collisione in questo frame
+    collision_hist = world.collision_sensor.get_collision_history()
+    is_colliding = collision_hist.get(snapshot.frame, 0.0) > 0.0
+
+    return {
+        "tempo_trascorso_s": snapshot.timestamp.elapsed_seconds,
+        "velocita_km_s": speed_km_s,
+        "freno_0_1": float(control.brake),
+        "acceleratore_0_1": float(control.throttle),
+        "rotazione_volante": float(control.steer),   # range tipico [-1, 1]
+        "sta_collidendo": is_colliding
+    }
 
 
 def game_loop(args):
@@ -856,6 +878,15 @@ def game_loop(args):
             clock.tick_busy_loop(60)
             if controller.parse_events(world, clock):
                 return
+            frame_info = extract_frame_info(world)
+            print(
+                f"t={frame_info['tempo_trascorso_s']:.3f}s | "
+                f"v={frame_info['velocita_km_s']:.6f} km/s | "
+                f"brake={frame_info['freno_0_1']:.3f} | "
+                f"throttle={frame_info['acceleratore_0_1']:.3f} | "
+                f"steer={frame_info['rotazione_volante']:.3f} | "
+                f"collision={frame_info['sta_collidendo']}"
+            )
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
