@@ -358,7 +358,7 @@ class DualControl(object):
         steerCmd = K1 * math.tan(1.1 * jsInputs[self._steer_idx])
 
         K2 = 1.6  # 1.6
-        throttleCmd = K2 + (2.05 * math.log10(
+        throttleCmd = K2 + (1.05 * math.log10(
             -0.7 * jsInputs[self._throttle_idx] + 1.4) - 1.2) / 0.92
         if 0.8 > jsInputs[self._throttle_idx]:
             print(jsInputs[self._throttle_idx])
@@ -421,7 +421,7 @@ class HUD(object):
         mono = default_font if default_font in fonts else fonts[0]
         mono = pygame.font.match_font(mono)
         self._font_mono = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
-        self._font_mono_large = pygame.font.Font(mono, 100 if os.name == 'nt' else 100)
+        self._font_mono_large = pygame.font.Font(mono, 300 if os.name == 'nt' else 300)
         self.starting = True
         self.ended = False
         self._notifications = FadingText(font, (width, 40), (0, height - 40))
@@ -432,6 +432,7 @@ class HUD(object):
         self._show_info = True
         self._info_text = []
         self._server_clock = pygame.time.Clock()
+        self.vodafone_panel = pygame.image.load("images/Panel.png")
 
     def on_world_tick(self, timestamp):
         self._server_clock.tick()
@@ -545,11 +546,14 @@ class HUD(object):
                     display.blit(surface, (8, v_offset))
                 v_offset += 18
         if self.starting:
+                display.blit(self.vodafone_panel, (1400, 100))
                 surface = self._font_mono_large.render("PARTENZA!", True, (255, 255, 255))
-                display.blit(surface, (2400, 400))
+                #surface = self._font_mono_large.render("FINE!", True, (255, 255, 255))
+                display.blit(surface, (1900, 450))
         if self.ended:
-                surface = self._font_mono_large.render("FINE DEL VIAGGIO!", True, (255, 255, 255))
-                display.blit(surface, (2300, 400))
+                display.blit(self.vodafone_panel, (1400, 100))
+                surface = self._font_mono_large.render("FINE!", True, (255, 255, 255))
+                display.blit(surface, (2100, 450))
 
         self._notifications.render(display)
         self.help.render(display)

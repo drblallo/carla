@@ -433,7 +433,8 @@ def scenario6(client: "carla.Client",
     ambulance.set_autopilot(True)
     tm.set_path(ambulance, [carla.Location(-158, 200, 128)])
 
-    wait_for(world, 5)
+    if not night:
+        wait_for(world, 5)
 
     show_image(client, EMERGENCY_VEHICLE, subscriber, "EMERGENCY_VEHICLE")
     wait_for(world, 1)
@@ -834,7 +835,7 @@ def main():
     world.set_weather(weather) 
     scenario3(client, world, ego_vehicle, args, cortex_subscriber, True, spawn_point=carla.Location(628, -18, 135), trigger_point=carla.Location(605, -56, 136))
 
-    scenario6(client, world, ego_vehicle, args, cortex_subscriber, True, trigger_point=carla.Location(857, 164, 134), spawn_point=carla.Location(747, 69, 135))
+    scenario6(client, world, ego_vehicle, args, cortex_subscriber, True, trigger_point=carla.Location(821, 132, 134), spawn_point=carla.Location(747, 69, 135))
 
     #cortex_subscriber.stop_record()
     #cortex_subscriber.join()
